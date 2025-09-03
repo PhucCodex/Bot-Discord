@@ -63,6 +63,8 @@ const WELCOME_CHANNEL_ID = '1406560267214524527';
 const GOODBYE_CHANNEL_ID = '1406559808114393121';
 const AUTO_ROLE_ID = '1406560015925514290'; // ⚠️ THAY BẰNG ID VAI TRÒ "THÀNH VIÊN" CỦA BẠN
 const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif'
+const CHAT_CHANNEL_ID = '1408709235478368267';
+const SUPPORT_CHANNEL_ID = '1412323492162174988';
 
 const commands = [
     // ... (Toàn bộ phần commands của bạn giữ nguyên, không cần thay đổi)
@@ -991,7 +993,11 @@ client.on('guildMemberAdd', async member => {
         const welcomeEmbed = new EmbedBuilder()
             .setColor('#57F287')
             .setTitle(`🎉 Chào mừng thành viên mới! 🎉`)
-            .setDescription(`Chào mừng con vợ ${member} đã hạ cánh xuống server!\n\nHy vọng con vợ sẽ có những giây phút vui vẻ và tuyệt vời tại đây.`)
+            .setDescription(
+                `Chào mừng con vợ ${member} đã hạ cánh xuống server!\n\n` +
+                `Đừng quên ghé qua 2 channel này nhé⊹ <#${CHAT_CHANNEL_ID}> ⁺ <#${TICKET_CHANNEL_ID}> ⊹\n\n` +
+                `Hy vọng con vợ sẽ có những giây phút vui vẻ và tuyệt vời tại đây.`
+            )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             .setImage(randomImage)
             .setTimestamp()
