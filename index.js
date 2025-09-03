@@ -14,9 +14,47 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuild
 const ms = require('ms');
 require('dotenv').config();
 
-// BIẾN ĐẾM TICKET VÀ LỊCH HẸN GỠ ROLE
-let ticketCounter = 1;
-const activeRoleTimeouts = new Map(); // Dùng để quản lý các role tạm thời
+// <<< THÊM THƯ VIỆN DATABASE
+const Database = require('better-sqlite3');
+
+// <<< KẾT NỐI TỚI FILE DATABASE TRONG VOLUME CỦA RAILWAY
+const db = new Database('/data/data.db');
+
+// <<< XÓA CÁC BIẾN LƯU TRONG BỘ NHỚ
+// let ticketCounter = 1;
+// const activeRoleTimeouts = new Map(); 
+
+// <<< HÀM THIẾT LẬP DATABASE LẦN ĐẦU
+function setupDatabase() {
+    // Bảng này dùng để lưu các cài đặt đơn lẻ như ticketCounter
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    `);
+    
+    // Bảng này dùng để lưu các lịch hẹn gỡ vai trò
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS temp_roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId TEXT NOT NULL,
+            guildId TEXT NOT NULL,
+            roleId TEXT NOT NULL,
+            expiresAt INTEGER NOT NULL
+        )
+    `);
+
+    // Khởi tạo ticketCounter nếu chưa có
+    const stmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
+    stmt.run('ticketCounter', '1');
+
+    console.log('✅ Database đã được thiết lập và sẵn sàng.');
+}
+
+// <<< CHẠY HÀM THIẾT LẬP NGAY KHI BOT KHỞI ĐỘNG
+setupDatabase();
+
 
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1128546415250198539';
 const TICKET_CATEGORY_ID = '1412100711931445452'; 
@@ -27,6 +65,7 @@ const AUTO_ROLE_ID = '1406560015925514290'; // ⚠️ THAY BẰNG ID VAI TRÒ "T
 const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif'
 
 const commands = [
+    // ... (Toàn bộ phần commands của bạn giữ nguyên, không cần thay đổi)
     new SlashCommandBuilder()
         .setName('info')
         .setDescription('Hiển thị thông tin người dùng hoặc server.')
@@ -250,10 +289,7 @@ const commands = [
         .setName('resettickets')
         .setDescription('Reset số đếm của ticket về lại 1.')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
 ].map(command => command.toJSON());
-
-
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
@@ -270,9 +306,42 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     }
 })();
 
-
-
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates] });
+
+// <<< HÀM GỠ VAI TRÒ TẠM THỜI VÀ KHÔI PHỤC LỊCH HẸN
+async function removeTempRole(userId, guildId, roleId) {
+    const guild = await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) return;
+
+    try {
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (member && member.roles.cache.has(roleId)) {
+            await member.roles.remove(roleId);
+            console.log(`Đã gỡ vai trò ${roleId} khỏi ${userId} trong server ${guild.name}`);
+        }
+    } catch (error) {
+        console.error(`Lỗi khi gỡ vai trò ${roleId} khỏi ${userId}:`, error);
+    } finally {
+        db.prepare(`DELETE FROM temp_roles WHERE userId = ? AND roleId = ? AND guildId = ?`).run(userId, roleId, guildId);
+    }
+}
+
+function restoreTempRoles() {
+    const rolesToRestore = db.prepare(`SELECT * FROM temp_roles`).all();
+    console.log(`🔎 Tìm thấy ${rolesToRestore.length} vai trò tạm thời cần khôi phục...`);
+
+    rolesToRestore.forEach(async (entry) => {
+        const remainingTime = entry.expiresAt - Date.now();
+
+        if (remainingTime <= 0) {
+            console.log(`Vai trò ${entry.roleId} của ${entry.userId} đã hết hạn, đang gỡ...`);
+            await removeTempRole(entry.userId, entry.guildId, entry.roleId);
+        } else {
+            console.log(`Khôi phục lịch hẹn gỡ vai trò ${entry.roleId} cho ${entry.userId} sau ${ms(remainingTime)}.`);
+            setTimeout(() => removeTempRole(entry.userId, entry.guildId, entry.roleId), remainingTime);
+        }
+    });
+}
 
 client.once('ready', () => {
     console.log(`✅ Bot đã online! Tên bot: ${client.user.tag}`);
@@ -284,11 +353,15 @@ client.once('ready', () => {
         }],
         status: 'idle', 
     });
+
+    // <<< KHÔI PHỤC CÁC LỊCH HẸN GỠ ROLE KHI BOT KHỞI ĐỘNG
+    restoreTempRoles();
 });
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('feedbackModal_')) {
+            // ... (Phần này giữ nguyên)
             const channelId = interaction.customId.split('_')[1];
             const tieuDe = interaction.fields.getTextInputValue('tieuDeInput');
             const noiDung = interaction.fields.getTextInputValue('noiDungInput');
@@ -316,6 +389,9 @@ client.on('interactionCreate', async interaction => {
         if (customId === 'create_ticket') {
             await interaction.deferReply({ ephemeral: true });
             
+            // <<< LẤY SỐ ĐẾM TỪ DATABASE
+            let ticketCounter = parseInt(db.prepare(`SELECT value FROM settings WHERE key = ?`).get('ticketCounter').value);
+            
             const ticketChannelName = `ticket-${ticketCounter}`;
 
             try {
@@ -329,8 +405,11 @@ client.on('interactionCreate', async interaction => {
                         { id: SUPPORT_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
                     ],
                 });
-
+                
+                // <<< TĂNG SỐ ĐẾM VÀ CẬP NHẬT VÀO DATABASE
                 ticketCounter++;
+                db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run(ticketCounter.toString(), 'ticketCounter');
+
 
                 const ticketWelcomeEmbed = new EmbedBuilder()
                     .setColor('#57F287')
@@ -356,10 +435,11 @@ client.on('interactionCreate', async interaction => {
 
             } catch (error) {
                 console.error("Lỗi khi tạo ticket:", error);
-                await interaction.followUp({ content: 'Đã có lỗi xảy ra khi tạo ticket. Vui lòng kiểm tra lại ID Category và quyền của bot.' });
+                await interaction.followUp({ content: 'Đã xảy ra khi tạo ticket. Vui lòng kiểm tra lại ID Category và quyền của bot.' });
             }
         }
         if (customId === 'close_ticket') {
+             // ... (Phần này giữ nguyên)
             if (!interaction.member.roles.cache.has(SUPPORT_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: 'Chỉ đội ngũ hỗ trợ mới có thể đóng ticket.', ephemeral: true });
             }
@@ -368,6 +448,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (customId.startsWith('open_feedback_form_')) {
+            // ... (Phần này giữ nguyên)
             const feedbackChannelId = customId.split('_')[3]; 
             const modal = new ModalBuilder()
                 .setCustomId(`feedbackModal_${feedbackChannelId}`)
@@ -390,57 +471,57 @@ client.on('interactionCreate', async interaction => {
         const { commandName } = interaction;
 
         if (commandName === 'info') {
-            await interaction.deferReply();
-            const subcommand = interaction.options.getSubcommand();
-
-            if (subcommand === 'user') {
-                const user = interaction.options.getUser('user');
-                const member = interaction.guild.members.cache.get(user.id);
-                const userEmbed = new EmbedBuilder()
-                    .setColor('#0099ff')
-                    .setTitle(`Thông tin về ${user.username}`)
-                    .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-                    .addFields(
-                        { name: '👤 Tên người dùng', value: user.tag, inline: true },
-                        { name: '🆔 ID', value: user.id, inline: true },
-                        { name: '🤖 Có phải là bot?', value: user.bot ? 'Đúng' : 'Không', inline: true },
-                        { name: '📅 Ngày tạo tài khoản', value: `<t:${parseInt(user.createdAt / 1000)}:F>`, inline: false },
-                    )
-                    .setTimestamp();
-
-                if (member) {
-                     userEmbed.addFields(
-                        { name: 'Nicknames', value: member.nickname || 'Không có', inline: true },
-                        { name: '🫂 Ngày tham gia server', value: `<t:${parseInt(member.joinedAt / 1000)}:F>`, inline: false },
-                        { name: '🎨 Vai trò cao nhất', value: member.roles.highest.toString(), inline: true },
-                     );
-                }
-                await interaction.followUp({ embeds: [userEmbed] });
-
-            } else if (subcommand === 'server') {
-                const { guild } = interaction;
-                await guild.members.fetch();
-                const owner = await guild.fetchOwner();
-
-                const serverEmbed = new EmbedBuilder()
-                    .setColor('#0099ff')
-                    .setAuthor({ name: guild.name, iconURL: guild.iconURL({ dynamic: true }) })
-                    .setThumbnail(guild.iconURL({ dynamic: true }))
-                    .addFields(
-                        { name: '👑 Chủ Server', value: owner.user.tag, inline: true },
-                        { name: '📅 Ngày thành lập', value: `<t:${parseInt(guild.createdAt / 1000)}:F>`, inline: true },
-                        { name: '🆔 Server ID', value: guild.id, inline: true },
-                        { name: '👥 Thành viên', value: `Tổng: **${guild.memberCount}**\n👤 Con người: **${guild.members.cache.filter(member => !member.user.bot).size}**\n🤖 Bot: **${guild.members.cache.filter(member => member.user.bot).size}**`, inline: true },
-                        { name: '🎨 Roles', value: `**${guild.roles.cache.size}** roles`, inline: true },
-                        { name: '🙂 Emojis & 💥 Stickers', value: `🙂 **${guild.emojis.cache.size}** emojis\n💥 **${guild.stickers.cache.size}** stickers`, inline: true },
-                    )
-                    .setTimestamp()
-                    .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
-
-                await interaction.followUp({ embeds: [serverEmbed] });
-            }
+             // ... (Các lệnh từ info đến move giữ nguyên)
+             await interaction.deferReply();
+             const subcommand = interaction.options.getSubcommand();
+ 
+             if (subcommand === 'user') {
+                 const user = interaction.options.getUser('user');
+                 const member = interaction.guild.members.cache.get(user.id);
+                 const userEmbed = new EmbedBuilder()
+                     .setColor('#0099ff')
+                     .setTitle(`Thông tin về ${user.username}`)
+                     .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+                     .addFields(
+                         { name: '👤 Tên người dùng', value: user.tag, inline: true },
+                         { name: '🆔 ID', value: user.id, inline: true },
+                         { name: '🤖 Có phải là bot?', value: user.bot ? 'Đúng' : 'Không', inline: true },
+                         { name: '📅 Ngày tạo tài khoản', value: `<t:${parseInt(user.createdAt / 1000)}:F>`, inline: false },
+                     )
+                     .setTimestamp();
+ 
+                 if (member) {
+                      userEmbed.addFields(
+                         { name: 'Nicknames', value: member.nickname || 'Không có', inline: true },
+                         { name: '🫂 Ngày tham gia server', value: `<t:${parseInt(member.joinedAt / 1000)}:F>`, inline: false },
+                         { name: '🎨 Vai trò cao nhất', value: member.roles.highest.toString(), inline: true },
+                      );
+                 }
+                 await interaction.followUp({ embeds: [userEmbed] });
+ 
+             } else if (subcommand === 'server') {
+                 const { guild } = interaction;
+                 await guild.members.fetch();
+                 const owner = await guild.fetchOwner();
+ 
+                 const serverEmbed = new EmbedBuilder()
+                     .setColor('#0099ff')
+                     .setAuthor({ name: guild.name, iconURL: guild.iconURL({ dynamic: true }) })
+                     .setThumbnail(guild.iconURL({ dynamic: true }))
+                     .addFields(
+                         { name: '👑 Chủ Server', value: owner.user.tag, inline: true },
+                         { name: '📅 Ngày thành lập', value: `<t:${parseInt(guild.createdAt / 1000)}:F>`, inline: true },
+                         { name: '🆔 Server ID', value: guild.id, inline: true },
+                         { name: '👥 Thành viên', value: `Tổng: **${guild.memberCount}**\n👤 Con người: **${guild.members.cache.filter(member => !member.user.bot).size}**\n🤖 Bot: **${guild.members.cache.filter(member => member.user.bot).size}**`, inline: true },
+                         { name: '🎨 Roles', value: `**${guild.roles.cache.size}** roles`, inline: true },
+                         { name: '🙂 Emojis & 💥 Stickers', value: `🙂 **${guild.emojis.cache.size}** emojis\n💥 **${guild.stickers.cache.size}** stickers`, inline: true },
+                     )
+                     .setTimestamp()
+                     .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
+ 
+                 await interaction.followUp({ embeds: [serverEmbed] });
+             }
         }
-
         else if (commandName === 'ping') {
             await interaction.deferReply();
             const botLatency = Date.now() - interaction.createdTimestamp;
@@ -703,6 +784,7 @@ client.on('interactionCreate', async interaction => {
             const role = interaction.options.getRole('vai_trò');
             const durationStr = interaction.options.getString('thời_hạn');
     
+            // ... (phần kiểm tra quyền giữ nguyên)
             if (!target || !role) {
                 return interaction.followUp({ content: 'Không tìm thấy thành viên hoặc vai trò được chỉ định.' });
             }
@@ -730,39 +812,26 @@ client.on('interactionCreate', async interaction => {
                 return interaction.followUp({ content: `Thời hạn quá dài! Tôi chỉ có thể hẹn giờ gỡ vai trò trong tối đa ${maxTimeoutDays} ngày.` });
             }
     
+            const expiresAt = Date.now() + durationMs;
+
             try {
                 await target.roles.add(role);
-    
-                const memberAfterUpdate = await interaction.guild.members.fetch({ user: target.id, force: true });
-                
-                if (memberAfterUpdate.roles.cache.has(role.id)) {
-                    const timeoutKey = `${target.id}-${role.id}`;
-                    const timeoutId = setTimeout(async () => {
-                        try {
-                            const freshMember = await interaction.guild.members.fetch(target.id).catch(() => null);
-                            if (freshMember && freshMember.roles.cache.has(role.id)) {
-                                await freshMember.roles.remove(role);
-                                console.log(`Đã tự động gỡ vai trò "${role.name}" khỏi "${target.user.tag}" sau ${durationStr}.`);
-                            }
-                        } catch (err) {
-                            console.error(`Lỗi khi tự động gỡ vai trò tạm thời cho ${target.user.tag}:`, err);
-                        }
-                        activeRoleTimeouts.delete(timeoutKey);
-                    }, durationMs);
 
-                    activeRoleTimeouts.set(timeoutKey, timeoutId);
-        
-                    const embed = new EmbedBuilder()
-                        .setColor('Green')
-                        .setTitle('✅ Gán vai trò tạm thời thành công')
-                        .setDescription(`Đã gán vai trò ${role} cho ${target} trong thời hạn **${durationStr}**.`)
-                        .setTimestamp()
-                        .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` });
-                    
-                    await interaction.followUp({ embeds: [embed] });
-                } else {
-                    throw new Error('Hành động gán vai trò đã được thực hiện nhưng không thành công. Vui lòng kiểm tra lại quyền hạn của bot.');
-                }
+                // <<< LƯU LỊCH HẸN VÀO DATABASE
+                const stmt = db.prepare(`INSERT INTO temp_roles (userId, guildId, roleId, expiresAt) VALUES (?, ?, ?, ?)`);
+                stmt.run(target.id, interaction.guild.id, role.id, expiresAt);
+                
+                // <<< TẠO LỊCH HẸN GỠ VAI TRÒ
+                setTimeout(() => removeTempRole(target.id, interaction.guild.id, role.id), durationMs);
+
+                const embed = new EmbedBuilder()
+                    .setColor('Green')
+                    .setTitle('✅ Gán vai trò tạm thời thành công')
+                    .setDescription(`Đã gán vai trò ${role} cho ${target} trong thời hạn **${durationStr}**. Dữ liệu đã được lưu.`)
+                    .setTimestamp()
+                    .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` });
+                
+                await interaction.followUp({ embeds: [embed] });
     
             } catch (error) {
                 console.error('Lỗi chi tiết khi gán vai trò tạm thời:', error); 
@@ -783,27 +852,20 @@ client.on('interactionCreate', async interaction => {
                 return interaction.followUp({ content: 'Thành viên này không có vai trò đó.' });
             }
     
-            const timeoutKey = `${target.id}-${role.id}`;
-            if (activeRoleTimeouts.has(timeoutKey)) {
-                clearTimeout(activeRoleTimeouts.get(timeoutKey));
-                activeRoleTimeouts.delete(timeoutKey);
-            }
-    
-            try {
-                await target.roles.remove(role);
-                const embed = new EmbedBuilder()
-                    .setColor('Red')
-                    .setTitle('✅ Gỡ vai trò tạm thời thành công')
-                    .setDescription(`Đã gỡ vai trò ${role} khỏi ${target} ngay lập tức.`)
-                    .setTimestamp()
-                    .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` });
-                await interaction.followUp({ embeds: [embed] });
-            } catch (error) {
-                console.error('Lỗi khi gỡ vai trò tạm thời:', error);
-                await interaction.followUp({ content: 'Đã xảy ra lỗi khi cố gắng gỡ vai trò. Vui lòng kiểm tra quyền của tôi.' });
-            }
+            // <<< XÓA LỊCH HẸN KHỎI DATABASE
+            // Không cần xóa setTimeout vì hàm removeTempRole sẽ được gọi trực tiếp và xóa DB
+            await removeTempRole(target.id, interaction.guild.id, role.id);
+            
+            const embed = new EmbedBuilder()
+                .setColor('Red')
+                .setTitle('✅ Gỡ vai trò tạm thời thành công')
+                .setDescription(`Đã gỡ vai trò ${role} khỏi ${target} ngay lập tức.`)
+                .setTimestamp()
+                .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` });
+            await interaction.followUp({ embeds: [embed] });
         }
         else if (commandName === 'ticketsetup') {
+            // ... (Phần này giữ nguyên)
             await interaction.deferReply({ ephemeral: true });
             const tieuDe = interaction.options.getString('tieu_de');
             const moTa = interaction.options.getString('mo_ta').replace(/\\n/g, '\n');
@@ -818,6 +880,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.followUp({ content: 'Đã cài đặt thành công bảng điều khiển ticket.' });
         }
         else if (commandName === 'formsetup') {
+            // ... (Phần này giữ nguyên)
             await interaction.deferReply({ ephemeral: true });
             const tieuDe = interaction.options.getString('tieu_de');
             const moTa = interaction.options.getString('mo_ta').replace(/\\n/g, '\n');
@@ -843,65 +906,67 @@ client.on('interactionCreate', async interaction => {
         }
 
         else if (commandName === 'warn') {
-            await interaction.deferReply({ ephemeral: true });
+             // ... (Phần này giữ nguyên)
+             await interaction.deferReply({ ephemeral: true });
     
-            const target = interaction.options.getMember('người');
-            const reason = interaction.options.getString('lý_do');
-            const destination = interaction.options.getString('nơi_gửi');
-    
-            if (!target) {
-                return interaction.followUp({ content: 'Không tìm thấy thành viên này.' });
-            }
-            if (target.id === interaction.user.id) {
-                return interaction.followUp({ content: 'Bạn không thể tự cảnh cáo chính mình!' });
-            }
-            if (target.permissions.has(PermissionFlagsBits.Administrator)) {
-                return interaction.followUp({ content: 'Bạn không thể cảnh cáo một Quản trị viên!' });
-            }
-            if (target.roles.highest.position >= interaction.member.roles.highest.position && interaction.guild.ownerId !== interaction.user.id) {
-                return interaction.followUp({ content: 'Bạn không thể cảnh cáo người có vai trò cao hơn hoặc bằng bạn.' });
-            }
-            
-            if (destination === 'dm') {
-                const warnEmbedDM = new EmbedBuilder()
-                    .setColor('Yellow')
-                    .setTitle('<:PridecordWarning:1412665674026717207> Bạn đã nhận một cảnh cáo')
-                    .setDescription(`Bạn đã nhận một cảnh cáo trong server **${interaction.guild.name}**.`)
-                    .addFields(
-                        { name: 'Người cảnh cáo', value: interaction.user.tag, inline: true },
-                        { name: 'Lý do', value: reason }
-                    )
-                    .setTimestamp()
-                    .setFooter({ text: `Hãy tuân thủ nội quy của server.` });
-
-                try {
-                    await target.send({ embeds: [warnEmbedDM] });
-                    await interaction.followUp({ content: `✅ Đã gửi cảnh cáo đến ${target.user.tag} qua tin nhắn riêng.` });
-                } catch (error) {
-                    console.error("Lỗi khi gửi DM cảnh cáo:", error);
-                    await interaction.followUp({ content: `❌ Không thể gửi tin nhắn riêng cho người dùng này. Họ có thể đã chặn bot hoặc tắt tin nhắn riêng.` });
-                }
-            } else { // destination === 'server'
-                const publicWarnEmbed = new EmbedBuilder()
-                    .setColor('Yellow')
-                    .setTitle('<:PridecordWarning:1412665674026717207> Thành viên đã bị cảnh cáo')
-                    .addFields(
-                        { name: 'Người bị cảnh cáo', value: target.toString(), inline: true },
-                        { name: 'Người thực hiện', value: interaction.user.toString(), inline: true },
-                        { name: 'Lý do', value: reason }
-                    )
-                    .setTimestamp();
-                
-                await interaction.channel.send({ embeds: [publicWarnEmbed] });
-                await interaction.followUp({ content: '✅ Đã gửi cảnh cáo công khai trong kênh này.' });
-            }
+             const target = interaction.options.getMember('người');
+             const reason = interaction.options.getString('lý_do');
+             const destination = interaction.options.getString('nơi_gửi');
+     
+             if (!target) {
+                 return interaction.followUp({ content: 'Không tìm thấy thành viên này.' });
+             }
+             if (target.id === interaction.user.id) {
+                 return interaction.followUp({ content: 'Bạn không thể tự cảnh cáo chính mình!' });
+             }
+             if (target.permissions.has(PermissionFlagsBits.Administrator)) {
+                 return interaction.followUp({ content: 'Bạn không thể cảnh cáo một Quản trị viên!' });
+             }
+             if (target.roles.highest.position >= interaction.member.roles.highest.position && interaction.guild.ownerId !== interaction.user.id) {
+                 return interaction.followUp({ content: 'Bạn không thể cảnh cáo người có vai trò cao hơn hoặc bằng bạn.' });
+             }
+             
+             if (destination === 'dm') {
+                 const warnEmbedDM = new EmbedBuilder()
+                     .setColor('Yellow')
+                     .setTitle('<:PridecordWarning:1412665674026717207> Bạn đã nhận một cảnh cáo')
+                     .setDescription(`Bạn đã nhận một cảnh cáo trong server **${interaction.guild.name}**.`)
+                     .addFields(
+                         { name: 'Người cảnh cáo', value: interaction.user.tag, inline: true },
+                         { name: 'Lý do', value: reason }
+                     )
+                     .setTimestamp()
+                     .setFooter({ text: `Hãy tuân thủ nội quy của server.` });
+ 
+                 try {
+                     await target.send({ embeds: [warnEmbedDM] });
+                     await interaction.followUp({ content: `✅ Đã gửi cảnh cáo đến ${target.user.tag} qua tin nhắn riêng.` });
+                 } catch (error) {
+                     console.error("Lỗi khi gửi DM cảnh cáo:", error);
+                     await interaction.followUp({ content: `❌ Không thể gửi tin nhắn riêng cho người dùng này. Họ có thể đã chặn bot hoặc tắt tin nhắn riêng.` });
+                 }
+             } else { // destination === 'server'
+                 const publicWarnEmbed = new EmbedBuilder()
+                     .setColor('Yellow')
+                     .setTitle('<:PridecordWarning:1412665674026717207> Thành viên đã bị cảnh cáo')
+                     .addFields(
+                         { name: 'Người bị cảnh cáo', value: target.toString(), inline: true },
+                         { name: 'Người thực hiện', value: interaction.user.toString(), inline: true },
+                         { name: 'Lý do', value: reason }
+                     )
+                     .setTimestamp();
+                 
+                 await interaction.channel.send({ embeds: [publicWarnEmbed] });
+                 await interaction.followUp({ content: '✅ Đã gửi cảnh cáo công khai trong kênh này.' });
+             }
         }
         else if (commandName === 'resettickets') {
             if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: 'Bạn không có quyền sử dụng lệnh này.', ephemeral: true });
             }
-            ticketCounter = 1;
-            await interaction.reply({ content: '✅ Đã reset số đếm ticket về lại 1.', ephemeral: true });
+            // <<< RESET TICKET TRONG DATABASE
+            db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run('1', 'ticketCounter');
+            await interaction.reply({ content: '✅ Đã reset số đếm ticket về lại 1 trong database.', ephemeral: true });
         }
     }
 });
@@ -910,6 +975,7 @@ client.on('interactionCreate', async interaction => {
 client.login(process.env.DISCORD_TOKEN);
 
 client.on('guildMemberAdd', async member => {
+    // ... (Phần này giữ nguyên)
     if (member.user.bot) return;
 
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
@@ -925,7 +991,6 @@ client.on('guildMemberAdd', async member => {
         const welcomeEmbed = new EmbedBuilder()
             .setColor('#57F287')
             .setTitle(`🎉 Chào mừng thành viên mới! 🎉`)
-            // Xóa dòng tag role khỏi đây
             .setDescription(`Chào mừng con vợ ${member} đã hạ cánh xuống server!\n\nHy vọng con vợ sẽ có những giây phút vui vẻ và tuyệt vời tại đây.`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             .setImage(randomImage)
@@ -933,7 +998,6 @@ client.on('guildMemberAdd', async member => {
             .setFooter({ text: `Hiện tại server có ${member.guild.memberCount} thành viên.` });
 
         try {
-            // Gửi tin nhắn có cả content (để ping) và embed
             await channel.send({ 
                 content: `<@&${SUPPORT_ROLE_ID}> ơi, có thành viên mới ${member} nè!`,
                 embeds: [welcomeEmbed] 
@@ -959,6 +1023,7 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('guildMemberRemove', async member => {
+     // ... (Phần này giữ nguyên)
     if (member.partial) {
         try {
             await member.fetch();
