@@ -995,7 +995,7 @@ client.on('guildMemberAdd', async member => {
             .setTitle(`🎉 Chào mừng thành viên mới! 🎉`)
             .setDescription(
                 `Chào mừng con vợ ${member} đã hạ cánh xuống server!\n\n` +
-                `Đừng quên ghé qua 2 channel này nhé⊹ <#${CHAT_CHANNEL_ID}> ⁺ <#${SUPPORT_CHANNEL_ID}> ⊹\n\n` +
+                `Đừng quên ghé qua 2 channel này nhé <#${CHAT_CHANNEL_ID}> & <#${SUPPORT_CHANNEL_ID}>\n\n` +
                 `Hy vọng con vợ sẽ có những giây phút vui vẻ và tuyệt vời tại đây.`
             )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
