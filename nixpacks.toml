@@ -1,0 +1,9 @@
+# nixpacks.toml
+
+[phases.setup]
+# Thêm các gói hệ thống cần thiết để build better-sqlite3
+aptPkgs = ["python3", "pkg-config", "build-essential"]
+
+[start]
+# Lệnh để chạy bot của bạn
+cmd = "node index.js"
