@@ -10,19 +10,17 @@ app.listen(port, () => {
   console.log(`Server đang lắng nghe tại http://localhost:${port}`);
 });
 
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
 const ms = require('ms');
 require('dotenv').config();
-const { QuickDB } = require("quick.db"); // THAY ĐỔI 1: Thêm quick.db
 
-// BIẾN ĐẾM TICKET, LỊCH HẸN GỠ ROLE VÀ DATABASE
+// BIẾN ĐẾM TICKET VÀ LỊCH HẸN GỠ ROLE
 let ticketCounter = 1;
 const activeRoleTimeouts = new Map(); // Dùng để quản lý các role tạm thời
-const db = new QuickDB(); // THAY ĐỔI 1: Khởi tạo database, thay thế cho reactionRoleMessages Map
 
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1128546415250198539';
-const TICKET_CATEGORY_ID = '1412100711931445452';
-const SUPPORT_ROLE_ID = '1412090993909563534';
+const TICKET_CATEGORY_ID = '1412100711931445452'; 
+const SUPPORT_ROLE_ID = '1412090993909563534';    
 const WELCOME_CHANNEL_ID = '1406560267214524527';
 const GOODBYE_CHANNEL_ID = '1406559808114393121';
 const AUTO_ROLE_ID = '1406560015925514290'; // ⚠️ THAY BẰNG ID VAI TRÒ "THÀNH VIÊN" CỦA BẠN
@@ -122,7 +120,7 @@ const commands = [
         .setName('avatar')
         .setDescription('Xem ảnh đại diện của một người dùng.')
         .addUserOption(option => option.setName('người').setDescription('Người bạn muốn xem avatar').setRequired(false)),
-
+    
     new SlashCommandBuilder()
         .setName('poll')
         .setDescription('Tạo một cuộc bình chọn nhanh.')
@@ -232,7 +230,7 @@ const commands = [
         .addStringOption(option => option.setName('hinh_anh').setDescription('URL hình ảnh (ảnh bìa) của bảng điều khiển.'))
         .addStringOption(option => option.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).'))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
+    
     new SlashCommandBuilder()
         .setName('warn')
         .setDescription('Gửi cảnh cáo đến một thành viên.')
@@ -251,16 +249,6 @@ const commands = [
     new SlashCommandBuilder()
         .setName('resettickets')
         .setDescription('Reset số đếm của ticket về lại 1.')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-    new SlashCommandBuilder()
-        .setName('reactionrole')
-        .setDescription('Cài đặt một tin nhắn reaction role.')
-        .addChannelOption(option => option.setName('kênh').setDescription('Kênh để gửi tin nhắn.').setRequired(true).addChannelTypes(ChannelType.GuildText))
-        .addStringOption(option => option.setName('tiêu_đề').setDescription('Tiêu đề của embed.').setRequired(true))
-        .addStringOption(option => option.setName('mô_tả').setDescription('Nội dung mô tả. Dùng \\n để xuống dòng.').setRequired(true))
-        .addStringOption(option => option.setName('vai_trò_và_emoji').setDescription('Định dạng: @Role1 :emoji1:, @Role2 :emoji2:').setRequired(true))
-        .addStringOption(option => option.setName('màu').setDescription('Mã màu Hex cho embed (vd: #3498db).'))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
 ].map(command => command.toJSON());
@@ -283,25 +271,18 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 })();
 
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildMessageReactions
-    ],
-    partials: [Partials.Message, Partials.Channel, Partials.Reaction],
-});
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates] });
 
 client.once('ready', () => {
     console.log(`✅ Bot đã online! Tên bot: ${client.user.tag}`);
 
     client.user.setPresence({
         activities: [{
-            name: '🌠 Sao Băng Rơi',
-            type: ActivityType.Watching
+            name: '🌠 Sao Băng Rơi', 
+            type: ActivityType.Watching 
         }],
-        status: 'idle',
+        status: 'idle', 
     });
 });
 
@@ -334,7 +315,7 @@ client.on('interactionCreate', async interaction => {
 
         if (customId === 'create_ticket') {
             await interaction.deferReply({ ephemeral: true });
-
+            
             const ticketChannelName = `ticket-${ticketCounter}`;
 
             try {
@@ -387,7 +368,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (customId.startsWith('open_feedback_form_')) {
-            const feedbackChannelId = customId.split('_')[3];
+            const feedbackChannelId = customId.split('_')[3]; 
             const modal = new ModalBuilder()
                 .setCustomId(`feedbackModal_${feedbackChannelId}`)
                 .setTitle('Gửi phản hồi cho Phúc');
@@ -489,7 +470,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.followUp(randomMessage);
         }
         else if (commandName === 'hi2') {
-            await interaction.deferReply();
+            await interaction.deferReply(); 
             const targetUser = interaction.options.getUser('người');
             const chonBuoi = interaction.options.getString('chon_buoi');
             const loiChucTuyY = interaction.options.getString('loi_chuc');
@@ -504,32 +485,32 @@ client.on('interactionCreate', async interaction => {
             } else {
                 loiChuc = `Hii ${targetUser}, chúc bạn một ngày tốt lành! 💕`;
             }
-            await interaction.followUp(loiChuc);
+            await interaction.followUp(loiChuc); 
         }
-        else if (commandName === 'time') {
-            await interaction.deferReply();
-            const timeZone = interaction.options.getString('quoc_gia') || 'Asia/Ho_Chi_Minh';
-            const choiceName = interaction.options.getString('quoc_gia') ? commands.find(c => c.name === 'time').options[0].choices.find(ch => ch.value === timeZone).name : '🇻🇳 Việt Nam';
-            const now = new Date();
-            const timeParts = new Intl.DateTimeFormat('en-GB', { timeZone: timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now);
-            const hour = timeParts.find(part => part.type === 'hour').value;
-            const minute = timeParts.find(part => part.type === 'minute').value;
-            const dateParts = new Intl.DateTimeFormat('vi-VN', { timeZone: timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(now);
-            const dateTimeString = `${hour}:${minute} ${dateParts}`;
-            await interaction.followUp(`Tại ${choiceName}, bây giờ là: ${dateTimeString} 🕒`);
+        else if (commandName === 'time') { 
+            await interaction.deferReply(); 
+            const timeZone = interaction.options.getString('quoc_gia') || 'Asia/Ho_Chi_Minh'; 
+            const choiceName = interaction.options.getString('quoc_gia') ? commands.find(c => c.name === 'time').options[0].choices.find(ch => ch.value === timeZone).name : '🇻🇳 Việt Nam'; 
+            const now = new Date(); 
+            const timeParts = new Intl.DateTimeFormat('en-GB', { timeZone: timeZone, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now); 
+            const hour = timeParts.find(part => part.type === 'hour').value; 
+            const minute = timeParts.find(part => part.type === 'minute').value; 
+            const dateParts = new Intl.DateTimeFormat('vi-VN', { timeZone: timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(now); 
+            const dateTimeString = `${hour}:${minute} ${dateParts}`; 
+            await interaction.followUp(`Tại ${choiceName}, bây giờ là: ${dateTimeString} 🕒`); 
         }
-        else if (commandName === 'feedback') {
-            const targetChannel = interaction.options.getChannel('kênh');
-            const feedbackChannelId = targetChannel ? targetChannel.id : DEFAULT_FEEDBACK_CHANNEL_ID;
-            const modal = new ModalBuilder().setCustomId(`feedbackModal_${feedbackChannelId}`).setTitle('Gửi phản hồi cho Phúc');
-            const tieuDeInput = new TextInputBuilder().setCustomId('tieuDeInput').setLabel("Tên của bạn ?").setStyle(TextInputStyle.Short).setPlaceholder('Ghi ở đây !').setRequired(true);
-            const noiDungInput = new TextInputBuilder().setCustomId('noiDungInput').setLabel("Nội dung").setStyle(TextInputStyle.Paragraph).setPlaceholder('Bạn muốn nói điều gì ? Hãy ghi ở đây !').setRequired(true);
-            const danhGiaInput = new TextInputBuilder().setCustomId('danhGiaInput').setLabel("Đánh giá của bạn (Tốt, Cần cải thiện..)").setStyle(TextInputStyle.Short).setPlaceholder('Ghi ở đây !').setRequired(false);
-            const firstActionRow = new ActionRowBuilder().addComponents(tieuDeInput);
-            const secondActionRow = new ActionRowBuilder().addComponents(noiDungInput);
-            const thirdActionRow = new ActionRowBuilder().addComponents(danhGiaInput);
-            modal.addComponents(firstActionRow, secondActionRow, thirdActionRow);
-            await interaction.showModal(modal);
+        else if (commandName === 'feedback') { 
+            const targetChannel = interaction.options.getChannel('kênh'); 
+            const feedbackChannelId = targetChannel ? targetChannel.id : DEFAULT_FEEDBACK_CHANNEL_ID; 
+            const modal = new ModalBuilder().setCustomId(`feedbackModal_${feedbackChannelId}`).setTitle('Gửi phản hồi cho Phúc'); 
+            const tieuDeInput = new TextInputBuilder().setCustomId('tieuDeInput').setLabel("Tên của bạn ?").setStyle(TextInputStyle.Short).setPlaceholder('Ghi ở đây !').setRequired(true); 
+            const noiDungInput = new TextInputBuilder().setCustomId('noiDungInput').setLabel("Nội dung").setStyle(TextInputStyle.Paragraph).setPlaceholder('Bạn muốn nói điều gì ? Hãy ghi ở đây !').setRequired(true); 
+            const danhGiaInput = new TextInputBuilder().setCustomId('danhGiaInput').setLabel("Đánh giá của bạn (Tốt, Cần cải thiện..)").setStyle(TextInputStyle.Short).setPlaceholder('Ghi ở đây !').setRequired(false); 
+            const firstActionRow = new ActionRowBuilder().addComponents(tieuDeInput); 
+            const secondActionRow = new ActionRowBuilder().addComponents(noiDungInput); 
+            const thirdActionRow = new ActionRowBuilder().addComponents(danhGiaInput); 
+            modal.addComponents(firstActionRow, secondActionRow, thirdActionRow); 
+            await interaction.showModal(modal); 
         }
         else if (commandName === 'avatar') {
             await interaction.deferReply();
@@ -550,7 +531,7 @@ client.on('interactionCreate', async interaction => {
             if (options.length < 2 || options.length > 10) {
                 return interaction.followUp({ content: 'Vui lòng cung cấp từ 2 đến 10 lựa chọn, cách nhau bởi dấu phẩy.' });
             }
-
+            
             const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
             const description = options.map((opt, index) => `${numberEmojis[index]} ${opt}`).join('\n\n');
 
@@ -560,7 +541,7 @@ client.on('interactionCreate', async interaction => {
                 .setTitle(`📊 ${question}`)
                 .setDescription(description)
                 .setTimestamp();
-
+            
             try {
                 const pollMessage = await interaction.channel.send({ embeds: [pollEmbed] });
                 for (let i = 0; i < options.length; i++) {
@@ -608,120 +589,120 @@ client.on('interactionCreate', async interaction => {
                 await interaction.followUp({ content: 'Đã có lỗi xảy ra. Vui lòng kiểm tra lại quyền của bot.' });
             }
         }
-        else if (commandName === 'kick' || commandName === 'ban') {
-            await interaction.deferReply();
-            const target = interaction.options.getMember('người');
-            const reason = interaction.options.getString('reason') ?? 'Không có lý do được cung cấp.';
-            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên này.', ephemeral: true });
-            if (target.id === interaction.user.id) return interaction.followUp({ content: 'Bạn không thể tự thực hiện hành động này lên chính mình!', ephemeral: true });
-            if (target.roles.highest.position >= interaction.member.roles.highest.position) return interaction.followUp({ content: 'Bạn không thể thực hiện hành động lên người có vai trò cao hơn hoặc bằng bạn.', ephemeral: true });
-            const action = commandName === 'kick' ? 'kick' : 'ban';
-            const actionVerb = commandName === 'kick' ? 'Kick' : 'Ban';
-            const color = commandName === 'kick' ? 'Orange' : 'Red';
-            if (!target[action + 'able']) return interaction.followUp({ content: `Tôi không có quyền để ${action} thành viên này.`, ephemeral: true });
-            try {
-                await target[action]({ reason });
-                const embed = new EmbedBuilder().setColor(color).setTitle(`${actionVerb} thành công`).setDescription(`**${target.user.tag}** đã bị ${action}.`).addFields({ name: 'Lý do', value: reason }).setTimestamp();
-                await interaction.followUp({ embeds: [embed] });
-            } catch (error) {
-                console.error(error);
-                await interaction.followUp({ content: `Đã xảy ra lỗi khi đang cố ${action} thành viên.`, ephemeral: true });
-            }
+        else if (commandName === 'kick' || commandName === 'ban') { 
+            await interaction.deferReply(); 
+            const target = interaction.options.getMember('người'); 
+            const reason = interaction.options.getString('reason') ?? 'Không có lý do được cung cấp.'; 
+            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên này.', ephemeral: true }); 
+            if (target.id === interaction.user.id) return interaction.followUp({ content: 'Bạn không thể tự thực hiện hành động này lên chính mình!', ephemeral: true }); 
+            if (target.roles.highest.position >= interaction.member.roles.highest.position) return interaction.followUp({ content: 'Bạn không thể thực hiện hành động lên người có vai trò cao hơn hoặc bằng bạn.', ephemeral: true }); 
+            const action = commandName === 'kick' ? 'kick' : 'ban'; 
+            const actionVerb = commandName === 'kick' ? 'Kick' : 'Ban'; 
+            const color = commandName === 'kick' ? 'Orange' : 'Red'; 
+            if (!target[action + 'able']) return interaction.followUp({ content: `Tôi không có quyền để ${action} thành viên này.`, ephemeral: true }); 
+            try { 
+                await target[action]({ reason }); 
+                const embed = new EmbedBuilder().setColor(color).setTitle(`${actionVerb} thành công`).setDescription(`**${target.user.tag}** đã bị ${action}.`).addFields({ name: 'Lý do', value: reason }).setTimestamp(); 
+                await interaction.followUp({ embeds: [embed] }); 
+            } catch (error) { 
+                console.error(error); 
+                await interaction.followUp({ content: `Đã xảy ra lỗi khi đang cố ${action} thành viên.`, ephemeral: true }); 
+            } 
         }
         else if (commandName === 'unban') {
-            await interaction.deferReply();
+            await interaction.deferReply(); 
             const userId = interaction.options.getString('userid');
             try {
                 await interaction.guild.members.unban(userId);
                 const embed = new EmbedBuilder().setColor('Green').setTitle('Unban thành công').setDescription(`Đã gỡ ban cho người dùng có ID: **${userId}**.`);
-                await interaction.followUp({ embeds: [embed] });
+                await interaction.followUp({ embeds: [embed] }); 
             } catch (error) {
                 console.error(error);
-                await interaction.followUp({ content: 'Đã xảy ra lỗi. Vui lòng kiểm tra lại ID hoặc có thể người dùng này không bị ban.', ephemeral: true });
+                await interaction.followUp({ content: 'Đã xảy ra lỗi. Vui lòng kiểm tra lại ID hoặc có thể người dùng này không bị ban.', ephemeral: true }); 
             }
         }
-        else if (commandName === 'timeout') {
-            await interaction.deferReply();
-            const target = interaction.options.getMember('người');
-            const durationStr = interaction.options.getString('time');
-            const reason = interaction.options.getString('reason') ?? 'Không có lý do.';
-            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên.', ephemeral: true });
-            if (target.id === interaction.user.id) return interaction.followUp({ content: 'Bạn không thể tự timeout mình!', ephemeral: true });
-            if (target.permissions.has(PermissionFlagsBits.Administrator)) return interaction.followUp({ content: 'Bạn không thể timeout một Quản trị viên!', ephemeral: true });
-            if (target.roles.highest.position >= interaction.member.roles.highest.position) { return interaction.followUp({ content: 'Bạn không thể timeout người có vai trò cao hơn hoặc bằng bạn.', ephemeral: true }); }
-            if (!target.moderatable) { return interaction.followUp({ content: 'Tôi không có quyền để timeout thành viên này. Vui lòng kiểm tra lại vai trò của tôi.', ephemeral: true }); }
-            const durationMs = ms(durationStr); if (!durationMs || durationMs > ms('28d')) return interaction.followUp({ content: 'Thời gian không hợp lệ. Vui lòng dùng định dạng như "10m", "1h", "2d" và không quá 28 ngày.', ephemeral: true });
-            try {
-                await target.timeout(durationMs, reason);
-                const embed = new EmbedBuilder().setColor('Yellow').setTitle('Timeout thành công').setDescription(`**${target.user.tag}** đã bị timeout.`).addFields({ name: 'Thời gian', value: durationStr }, { name: 'Lý do', value: reason }).setTimestamp();
-                await interaction.followUp({ embeds: [embed] });
-            } catch (error) {
-                console.error(error);
-                await interaction.followUp({ content: 'Đã xảy ra lỗi khi đang cố timeout thành viên.', ephemeral: true });
-            }
+        else if (commandName === 'timeout') { 
+            await interaction.deferReply(); 
+            const target = interaction.options.getMember('người'); 
+            const durationStr = interaction.options.getString('time'); 
+            const reason = interaction.options.getString('reason') ?? 'Không có lý do.'; 
+            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên.', ephemeral: true }); 
+            if (target.id === interaction.user.id) return interaction.followUp({ content: 'Bạn không thể tự timeout mình!', ephemeral: true }); 
+            if (target.permissions.has(PermissionFlagsBits.Administrator)) return interaction.followUp({ content: 'Bạn không thể timeout một Quản trị viên!', ephemeral: true }); 
+            if (target.roles.highest.position >= interaction.member.roles.highest.position) { return interaction.followUp({ content: 'Bạn không thể timeout người có vai trò cao hơn hoặc bằng bạn.', ephemeral: true }); } 
+            if (!target.moderatable) { return interaction.followUp({ content: 'Tôi không có quyền để timeout thành viên này. Vui lòng kiểm tra lại vai trò của tôi.', ephemeral: true }); } 
+            const durationMs = ms(durationStr); if (!durationMs || durationMs > ms('28d')) return interaction.followUp({ content: 'Thời gian không hợp lệ. Vui lòng dùng định dạng như "10m", "1h", "2d" và không quá 28 ngày.', ephemeral: true }); 
+            try { 
+                await target.timeout(durationMs, reason); 
+                const embed = new EmbedBuilder().setColor('Yellow').setTitle('Timeout thành công').setDescription(`**${target.user.tag}** đã bị timeout.`).addFields({ name: 'Thời gian', value: durationStr }, { name: 'Lý do', value: reason }).setTimestamp(); 
+                await interaction.followUp({ embeds: [embed] }); 
+            } catch (error) { 
+                console.error(error); 
+                await interaction.followUp({ content: 'Đã xảy ra lỗi khi đang cố timeout thành viên.', ephemeral: true }); 
+            } 
         }
         else if (commandName === 'untimeout') {
-            await interaction.deferReply();
+            await interaction.deferReply(); 
             const target = interaction.options.getMember('người');
-            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên.', ephemeral: true });
-            if (target.id === interaction.user.id) return interaction.followUp({ content: 'Bạn không thể tự gỡ timeout cho mình!', ephemeral: true });
+            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên.', ephemeral: true }); 
+            if (target.id === interaction.user.id) return interaction.followUp({ content: 'Bạn không thể tự gỡ timeout cho mình!', ephemeral: true }); 
             if (target.roles.highest.position >= interaction.member.roles.highest.position) {
-                return interaction.followUp({ content: 'Bạn không thể gỡ timeout cho người có vai trò cao hơn hoặc bằng bạn.', ephemeral: true });
+                return interaction.followUp({ content: 'Bạn không thể gỡ timeout cho người có vai trò cao hơn hoặc bằng bạn.', ephemeral: true }); 
             }
             if (!target.moderatable) {
-                return interaction.followUp({ content: 'Tôi không có quyền để quản lý thành viên này.', ephemeral: true });
+                return interaction.followUp({ content: 'Tôi không có quyền để quản lý thành viên này.', ephemeral: true }); 
             }
             if (!target.isCommunicationDisabled()) {
-                return interaction.followUp({ content: 'Thành viên này không đang bị timeout.', ephemeral: true });
+                return interaction.followUp({ content: 'Thành viên này không đang bị timeout.', ephemeral: true }); 
             }
             try {
                 await target.timeout(null);
                 const embed = new EmbedBuilder().setColor('Green').setTitle('Gỡ Timeout thành công').setDescription(`Đã gỡ timeout cho **${target.user.tag}**.`);
-                await interaction.followUp({ embeds: [embed] });
+                await interaction.followUp({ embeds: [embed] }); 
             } catch (error) {
                 console.error(error);
-                await interaction.followUp({ content: 'Đã xảy ra lỗi khi đang cố gỡ timeout.', ephemeral: true });
+                await interaction.followUp({ content: 'Đã xảy ra lỗi khi đang cố gỡ timeout.', ephemeral: true }); 
             }
         }
-        else if (commandName === 'rename') {
-            await interaction.deferReply();
-            const target = interaction.options.getMember('người');
-            const nickname = interaction.options.getString('nickname');
-            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên.', ephemeral: true });
-            if (target.roles.highest.position >= interaction.member.roles.highest.position && interaction.guild.ownerId !== interaction.user.id) return interaction.followUp({ content: 'Bạn không thể đổi tên người có vai trò cao hơn hoặc bằng bạn.', ephemeral: true });
-            try {
-                const oldNickname = target.displayName;
-                await target.setNickname(nickname);
-                const embed = new EmbedBuilder().setColor('Blue').setTitle('Đổi tên thành công').setDescription(`Đã đổi nickname của **${target.user.tag}** từ \`${oldNickname}\` thành \`${nickname}\`.`);
-                await interaction.followUp({ embeds: [embed] });
-            } catch (error) {
-                console.error(error);
-                await interaction.followUp({ content: 'Đã xảy ra lỗi khi đang cố đổi tên thành viên. Có thể nickname quá dài hoặc tôi không có quyền.', ephemeral: true });
-            }
+        else if (commandName === 'rename') { 
+            await interaction.deferReply(); 
+            const target = interaction.options.getMember('người'); 
+            const nickname = interaction.options.getString('nickname'); 
+            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên.', ephemeral: true }); 
+            if (target.roles.highest.position >= interaction.member.roles.highest.position && interaction.guild.ownerId !== interaction.user.id) return interaction.followUp({ content: 'Bạn không thể đổi tên người có vai trò cao hơn hoặc bằng bạn.', ephemeral: true }); 
+            try { 
+                const oldNickname = target.displayName; 
+                await target.setNickname(nickname); 
+                const embed = new EmbedBuilder().setColor('Blue').setTitle('Đổi tên thành công').setDescription(`Đã đổi nickname của **${target.user.tag}** từ \`${oldNickname}\` thành \`${nickname}\`.`); 
+                await interaction.followUp({ embeds: [embed] }); 
+            } catch (error) { 
+                console.error(error); 
+                await interaction.followUp({ content: 'Đã xảy ra lỗi khi đang cố đổi tên thành viên. Có thể nickname quá dài hoặc tôi không có quyền.', ephemeral: true }); 
+            } 
         }
-        else if (commandName === 'move') {
-            await interaction.deferReply();
-            const target = interaction.options.getMember('người');
-            const channel = interaction.options.getChannel('channel');
-            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên.', ephemeral: true });
-            if (!target.voice.channel) return interaction.followUp({ content: 'Thành viên này không ở trong kênh thoại nào.', ephemeral: true });
-            try {
-                await target.voice.setChannel(channel);
-                const embed = new EmbedBuilder().setColor('Purple').setTitle('Di chuyển thành công').setDescription(`Đã di chuyển **${target.user.tag}** đến kênh thoại **${channel.name}**.`);
-                await interaction.followUp({ embeds: [embed] });
-            } catch (error) {
-                console.error(error);
+        else if (commandName === 'move') { 
+            await interaction.deferReply(); 
+            const target = interaction.options.getMember('người'); 
+            const channel = interaction.options.getChannel('channel'); 
+            if (!target) return interaction.followUp({ content: 'Không tìm thấy thành viên.', ephemeral: true }); 
+            if (!target.voice.channel) return interaction.followUp({ content: 'Thành viên này không ở trong kênh thoại nào.', ephemeral: true }); 
+            try { 
+                await target.voice.setChannel(channel); 
+                const embed = new EmbedBuilder().setColor('Purple').setTitle('Di chuyển thành công').setDescription(`Đã di chuyển **${target.user.tag}** đến kênh thoại **${channel.name}**.`); 
+                await interaction.followUp({ embeds: [embed] }); 
+            } catch (error) { 
+                console.error(error); 
                 await interaction.followUp({ content: 'Đã xảy ra lỗi khi đang cố di chuyển thành viên. Vui lòng kiểm tra lại quyền của tôi.', ephemeral: true });
-            }
+            } 
         }
-
+        
         else if (commandName === 'roletemp') {
             await interaction.deferReply({ ephemeral: true });
-
+    
             const target = interaction.options.getMember('người');
             const role = interaction.options.getRole('vai_trò');
             const durationStr = interaction.options.getString('thời_hạn');
-
+    
             if (!target || !role) {
                 return interaction.followUp({ content: 'Không tìm thấy thành viên hoặc vai trò được chỉ định.' });
             }
@@ -737,23 +718,23 @@ client.on('interactionCreate', async interaction => {
             if (target.roles.cache.has(role.id)) {
                 return interaction.followUp({ content: 'Thành viên này đã có vai trò đó rồi.' });
             }
-
+    
             const durationMs = ms(durationStr);
             if (!durationMs || durationMs <= 0) {
                 return interaction.followUp({ content: 'Thời hạn không hợp lệ. Vui lòng sử dụng định dạng như "10m", "1h", "7d".' });
             }
-
+            
             const maxTimeoutDays = 24;
             const maxTimeoutMs = maxTimeoutDays * 24 * 60 * 60 * 1000;
             if (durationMs > maxTimeoutMs) {
                 return interaction.followUp({ content: `Thời hạn quá dài! Tôi chỉ có thể hẹn giờ gỡ vai trò trong tối đa ${maxTimeoutDays} ngày.` });
             }
-
+    
             try {
                 await target.roles.add(role);
-
+    
                 const memberAfterUpdate = await interaction.guild.members.fetch({ user: target.id, force: true });
-
+                
                 if (memberAfterUpdate.roles.cache.has(role.id)) {
                     const timeoutKey = `${target.id}-${role.id}`;
                     const timeoutId = setTimeout(async () => {
@@ -770,44 +751,44 @@ client.on('interactionCreate', async interaction => {
                     }, durationMs);
 
                     activeRoleTimeouts.set(timeoutKey, timeoutId);
-
+        
                     const embed = new EmbedBuilder()
                         .setColor('Green')
                         .setTitle('✅ Gán vai trò tạm thời thành công')
                         .setDescription(`Đã gán vai trò ${role} cho ${target} trong thời hạn **${durationStr}**.`)
                         .setTimestamp()
                         .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` });
-
+                    
                     await interaction.followUp({ embeds: [embed] });
                 } else {
                     throw new Error('Hành động gán vai trò đã được thực hiện nhưng không thành công. Vui lòng kiểm tra lại quyền hạn của bot.');
                 }
-
+    
             } catch (error) {
-                console.error('Lỗi chi tiết khi gán vai trò tạm thời:', error);
+                console.error('Lỗi chi tiết khi gán vai trò tạm thời:', error); 
                 await interaction.followUp({ content: `**Đã xảy ra lỗi khi cố gắng gán vai trò:**\n\`\`\`${error.message}\`\`\`\nĐây là lỗi từ phía Discord, hãy chắc chắn bot có đủ quyền và vai trò của bot cao hơn vai trò cần gán.` });
             }
         }
 
         else if (commandName === 'unroletemp') {
             await interaction.deferReply({ ephemeral: true });
-
+    
             const target = interaction.options.getMember('người');
             const role = interaction.options.getRole('vai_trò');
-
+    
             if (!target || !role) {
                 return interaction.followUp({ content: 'Không tìm thấy thành viên hoặc vai trò được chỉ định.' });
             }
             if (!target.roles.cache.has(role.id)) {
                 return interaction.followUp({ content: 'Thành viên này không có vai trò đó.' });
             }
-
+    
             const timeoutKey = `${target.id}-${role.id}`;
             if (activeRoleTimeouts.has(timeoutKey)) {
                 clearTimeout(activeRoleTimeouts.get(timeoutKey));
                 activeRoleTimeouts.delete(timeoutKey);
             }
-
+    
             try {
                 await target.roles.remove(role);
                 const embed = new EmbedBuilder()
@@ -863,11 +844,11 @@ client.on('interactionCreate', async interaction => {
 
         else if (commandName === 'warn') {
             await interaction.deferReply({ ephemeral: true });
-
+    
             const target = interaction.options.getMember('người');
             const reason = interaction.options.getString('lý_do');
             const destination = interaction.options.getString('nơi_gửi');
-
+    
             if (!target) {
                 return interaction.followUp({ content: 'Không tìm thấy thành viên này.' });
             }
@@ -880,7 +861,7 @@ client.on('interactionCreate', async interaction => {
             if (target.roles.highest.position >= interaction.member.roles.highest.position && interaction.guild.ownerId !== interaction.user.id) {
                 return interaction.followUp({ content: 'Bạn không thể cảnh cáo người có vai trò cao hơn hoặc bằng bạn.' });
             }
-
+            
             if (destination === 'dm') {
                 const warnEmbedDM = new EmbedBuilder()
                     .setColor('Yellow')
@@ -910,7 +891,7 @@ client.on('interactionCreate', async interaction => {
                         { name: 'Lý do', value: reason }
                     )
                     .setTimestamp();
-
+                
                 await interaction.channel.send({ embeds: [publicWarnEmbed] });
                 await interaction.followUp({ content: '✅ Đã gửi cảnh cáo công khai trong kênh này.' });
             }
@@ -921,61 +902,6 @@ client.on('interactionCreate', async interaction => {
             }
             ticketCounter = 1;
             await interaction.reply({ content: '✅ Đã reset số đếm ticket về lại 1.', ephemeral: true });
-        }
-        else if (commandName === 'reactionrole') {
-            await interaction.deferReply({ ephemeral: true });
-
-            const channel = interaction.options.getChannel('kênh');
-            const title = interaction.options.getString('tiêu_đề');
-            const description = interaction.options.getString('mô_tả').replace(/\\n/g, '\n');
-            const rolesAndEmojis = interaction.options.getString('vai_trò_và_emoji');
-            const color = interaction.options.getString('màu');
-
-            const pairs = rolesAndEmojis.match(/<@&(\d+)>|(<a?:\w+:\d+>|[\u00a9-\u3299\ufe0f\s]+)/g);
-            if (!pairs || pairs.length % 2 !== 0) {
-                return interaction.followUp({ content: 'Định dạng vai trò và emoji không hợp lệ. Vui lòng kiểm tra lại.' });
-            }
-
-            const roleMap = new Map();
-            let embedDescription = `${description}\n\n`;
-
-            for (let i = 0; i < pairs.length; i += 2) {
-                const roleId = pairs[i].match(/\d+/)[0];
-                const emoji = pairs[i + 1].trim();
-
-                const role = interaction.guild.roles.cache.get(roleId);
-                if (!role) {
-                    return interaction.followUp({ content: `Không tìm thấy vai trò với ID: ${roleId}` });
-                }
-                
-                if (role.position >= interaction.guild.members.me.roles.highest.position) {
-                    return interaction.followUp({ content: `Tôi không có quyền quản lý vai trò "${role.name}". Vui lòng di chuyển vai trò của tôi lên cao hơn.` });
-                }
-
-                roleMap.set(emoji, roleId);
-                embedDescription += `${emoji} - ${role}\n`;
-            }
-
-            const embed = new EmbedBuilder()
-                .setTitle(title)
-                .setDescription(embedDescription)
-                .setColor(color || '#0099ff');
-
-            try {
-                const message = await channel.send({ embeds: [embed] });
-                // THAY ĐỔI 2: Lưu vào database thay vì Map
-                const roleMapObject = Object.fromEntries(roleMap);
-                await db.set(`reactionrole_${message.id}`, roleMapObject);
-
-                for (const emoji of roleMap.keys()) {
-                    await message.react(emoji);
-                }
-
-                await interaction.followUp({ content: 'Đã tạo tin nhắn reaction role thành công!' });
-            } catch (error) {
-                console.error("Lỗi khi tạo reaction role:", error);
-                await interaction.followUp({ content: 'Đã xảy ra lỗi. Vui lòng kiểm tra lại quyền gửi tin nhắn và thêm reaction của tôi trong kênh đó.' });
-            }
         }
     }
 });
@@ -999,6 +925,7 @@ client.on('guildMemberAdd', async member => {
         const welcomeEmbed = new EmbedBuilder()
             .setColor('#57F287')
             .setTitle(`🎉 Chào mừng thành viên mới! 🎉`)
+            // Xóa dòng tag role khỏi đây
             .setDescription(`Chào mừng con vợ ${member} đã hạ cánh xuống server!\n\nHy vọng con vợ sẽ có những giây phút vui vẻ và tuyệt vời tại đây.`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             .setImage(randomImage)
@@ -1006,9 +933,10 @@ client.on('guildMemberAdd', async member => {
             .setFooter({ text: `Hiện tại server có ${member.guild.memberCount} thành viên.` });
 
         try {
-            await channel.send({
+            // Gửi tin nhắn có cả content (để ping) và embed
+            await channel.send({ 
                 content: `<@&${SUPPORT_ROLE_ID}> ơi, có thành viên mới ${member} nè!`,
-                embeds: [welcomeEmbed]
+                embeds: [welcomeEmbed] 
             });
         } catch (error) {
             console.error("Lỗi khi gửi tin nhắn chào mừng:", error);
@@ -1056,80 +984,12 @@ client.on('guildMemberRemove', async member => {
             .setTitle(`👋 Một thành viên đã rời đi 👋`)
             .setDescription(`**${member.user.tag}** đã rời khỏi server. Hẹn gặp lại!`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-            .setImage(GOODBYE_GIF_URL)
+            .setImage(GOODBYE_GIF_URL) // Sử dụng link ảnh GIF cố định
             .setTimestamp()
             .setFooter({ text: `Hiện tại server còn lại ${member.guild.memberCount} thành viên.` });
 
         await channel.send({ embeds: [goodbyeEmbed] });
     } catch (error) {
         console.error("Lỗi khi tạo hoặc gửi tin nhắn tạm biệt:", error);
-    }
-});
-
-client.on('messageReactionAdd', async (reaction, user) => {
-    if (user.bot) return;
-    
-    if (reaction.partial) {
-        try {
-            await reaction.fetch();
-        } catch (error) {
-            console.error('Lỗi khi fetch reaction: ', error);
-            return;
-        }
-    }
-
-    // THAY ĐỔI 3: Lấy dữ liệu từ database
-    const roleMapObject = await db.get(`reactionrole_${reaction.message.id}`);
-    if (!roleMapObject) return;
-    const roleMap = new Map(Object.entries(roleMapObject));
-
-    const emoji = reaction.emoji.name;
-    const roleId = roleMap.get(emoji);
-
-    if (roleId) {
-        try {
-            const member = await reaction.message.guild.members.fetch(user.id);
-            const role = reaction.message.guild.roles.cache.get(roleId);
-            if (member && role) {
-                await member.roles.add(role);
-                console.log(`Đã gán vai trò "${role.name}" cho ${user.tag}.`);
-            }
-        } catch (error) {
-            console.error(`Lỗi khi gán vai trò:`, error);
-        }
-    }
-});
-
-client.on('messageReactionRemove', async (reaction, user) => {
-    if (user.bot) return;
-
-    if (reaction.partial) {
-        try {
-            await reaction.fetch();
-        } catch (error) {
-            console.error('Lỗi khi fetch reaction: ', error);
-            return;
-        }
-    }
-    
-    // THAY ĐỔI 4: Lấy dữ liệu từ database
-    const roleMapObject = await db.get(`reactionrole_${reaction.message.id}`);
-    if (!roleMapObject) return;
-    const roleMap = new Map(Object.entries(roleMapObject));
-    
-    const emoji = reaction.emoji.name;
-    const roleId = roleMap.get(emoji);
-
-    if (roleId) {
-        try {
-            const member = await reaction.message.guild.members.fetch(user.id);
-            const role = reaction.message.guild.roles.cache.get(roleId);
-            if (member && role) {
-                await member.roles.remove(role);
-                console.log(`Đã gỡ vai trò "${role.name}" khỏi ${user.tag}.`);
-            }
-        } catch (error) {
-            console.error(`Lỗi khi gỡ vai trò:`, error);
-        }
     }
 });
