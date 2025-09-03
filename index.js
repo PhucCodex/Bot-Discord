@@ -258,6 +258,7 @@ const commands = [
         .setDescription('Cài đặt bảng điều khiển ticket có tùy chỉnh.')
         .addStringOption(option => option.setName('tieu_de').setDescription('Tiêu đề chính của bảng điều khiển.').setRequired(true))
         .addStringOption(option => option.setName('mo_ta').setDescription('Nội dung mô tả chi tiết. Dùng \\n để xuống dòng.').setRequired(true))
+        .addStringOption(option => option.setName('content').setDescription('Nội dung tin nhắn riêng bên trên embed (để ping role, thêm emoji...).'))
         .addStringOption(option => option.setName('hinh_anh').setDescription('URL hình ảnh (ảnh bìa) của bảng điều khiển.'))
         .addStringOption(option => option.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).'))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -267,6 +268,7 @@ const commands = [
         .setDescription('Cài đặt bảng điều khiển để mở form feedback.')
         .addStringOption(option => option.setName('tieu_de').setDescription('Tiêu đề chính của bảng điều khiển.').setRequired(true))
         .addStringOption(option => option.setName('mo_ta').setDescription('Nội dung mô tả chi tiết. Dùng \\n để xuống dòng.').setRequired(true))
+        .addStringOption(option => option.setName('content').setDescription('Nội dung tin nhắn riêng bên trên embed (để ping role, thêm emoji...).'))
         .addChannelOption(option => option.setName('kenh_nhan_form').setDescription('Kênh sẽ nhận kết quả form. Mặc định là kênh feedback chung.'))
         .addStringOption(option => option.setName('hinh_anh').setDescription('URL hình ảnh (ảnh bìa) của bảng điều khiển.'))
         .addStringOption(option => option.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).'))
@@ -867,25 +869,37 @@ client.on('interactionCreate', async interaction => {
             await interaction.followUp({ embeds: [embed] });
         }
         else if (commandName === 'ticketsetup') {
-            // ... (Phần này giữ nguyên)
             await interaction.deferReply({ ephemeral: true });
             const tieuDe = interaction.options.getString('tieu_de');
             const moTa = interaction.options.getString('mo_ta').replace(/\\n/g, '\n');
+            const content = interaction.options.getString('content'); // <<< LẤY GIÁ TRỊ CONTENT
             const hinhAnh = interaction.options.getString('hinh_anh');
             const mauSac = interaction.options.getString('mau_sac');
+
             const ticketEmbed = new EmbedBuilder().setTitle(tieuDe).setDescription(moTa);
             if (mauSac) ticketEmbed.setColor(mauSac);
             if (hinhAnh) ticketEmbed.setImage(hinhAnh);
+
             const openButton = new ButtonBuilder().setCustomId('create_ticket').setLabel('Mở Ticket').setStyle(ButtonStyle.Success).setEmoji('<:Email37:1412322372790255636>');
             const row = new ActionRowBuilder().addComponents(openButton);
-            await interaction.channel.send({ embeds: [ticketEmbed], components: [row] });
+
+            // <<< TẠO PAYLOAD VÀ GỬI
+            const messagePayload = {
+                embeds: [ticketEmbed],
+                components: [row]
+            };
+            if (content) {
+                messagePayload.content = content;
+            }
+            await interaction.channel.send(messagePayload);
+            
             await interaction.followUp({ content: 'Đã cài đặt thành công bảng điều khiển ticket.' });
         }
         else if (commandName === 'formsetup') {
-            // ... (Phần này giữ nguyên)
             await interaction.deferReply({ ephemeral: true });
             const tieuDe = interaction.options.getString('tieu_de');
             const moTa = interaction.options.getString('mo_ta').replace(/\\n/g, '\n');
+            const content = interaction.options.getString('content'); // <<< LẤY GIÁ TRỊ CONTENT
             const hinhAnh = interaction.options.getString('hinh_anh');
             const mauSac = interaction.options.getString('mau_sac');
             const kenhNhanForm = interaction.options.getChannel('kenh_nhan_form');
@@ -895,15 +909,19 @@ client.on('interactionCreate', async interaction => {
             if (mauSac) formEmbed.setColor(mauSac);
             if (hinhAnh) formEmbed.setImage(hinhAnh);
 
-            const openFormButton = new ButtonBuilder()
-                .setCustomId(`open_feedback_form_${feedbackChannelId}`)
-                .setLabel('Hỗ Trợ')
-                .setStyle(ButtonStyle.Danger)
-                .setEmoji('<:email49:1412322374891602020>');
-
+            const openFormButton = new ButtonBuilder().setCustomId(`open_feedback_form_${feedbackChannelId}`).setLabel('Hỗ Trợ').setStyle(ButtonStyle.Danger).setEmoji('<:email49:1412322374891602020>');
             const row = new ActionRowBuilder().addComponents(openFormButton);
+            
+            // <<< TẠO PAYLOAD VÀ GỬI
+            const messagePayload = {
+                embeds: [formEmbed],
+                components: [row]
+            };
+            if (content) {
+                messagePayload.content = content;
+            }
+            await interaction.channel.send(messagePayload);
 
-            await interaction.channel.send({ embeds: [formEmbed], components: [row] });
             await interaction.followUp({ content: 'Đã cài đặt thành công bảng điều khiển form.' });
         }
 
