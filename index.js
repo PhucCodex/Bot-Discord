@@ -45,13 +45,15 @@ function setupDatabase() {
         )
     `);
 
-    // --- BẢNG MỚI CHO HỆ THỐNG AUTO-MOD ---
+    // --- BẢNG MỚI CHO HỆ THỐNG AUTO-MOD (ĐÃ SỬA LỖI) ---
+    // Lỗi đã được sửa ở đây: Xóa bỏ UNIQUE constraint để có thể lưu nhiều cảnh cáo
     db.exec(`
         CREATE TABLE IF NOT EXISTS warnings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             userId TEXT NOT NULL,
             guildId TEXT NOT NULL,
-            UNIQUE(userId, guildId)
+            reason TEXT,
+            timestamp INTEGER
         )
     `);
     // --- KẾT THÚC BẢNG MỚI ---
@@ -1118,13 +1120,20 @@ client.on('messageCreate', async message => {
         }
 
         const reason = 'Sử dụng ngôn từ không phù hợp (Tự động bởi Bot).';
+        const timestamp = Date.now();
         
-        // Thêm cảnh cáo vào DB
-        db.prepare('INSERT INTO warnings (userId, guildId) VALUES (?, ?)').run(message.author.id, message.guild.id);
+        // Thêm cảnh cáo vào DB (đã sửa)
+        try {
+            const stmt = db.prepare('INSERT INTO warnings (userId, guildId, reason, timestamp) VALUES (?, ?, ?, ?)');
+            stmt.run(message.author.id, message.guild.id, reason, timestamp);
+        } catch (dbError) {
+            console.error("Lỗi khi ghi cảnh cáo vào DB:", dbError);
+            return; // Dừng lại nếu không ghi được vào DB
+        }
         
-        // Đếm tổng số cảnh cáo
+        // Đếm tổng số cảnh cáo (đã sửa)
         const row = db.prepare('SELECT COUNT(*) as count FROM warnings WHERE userId = ? AND guildId = ?').get(message.author.id, message.guild.id);
-        const warnCount = row.count;
+        const warnCount = row ? row.count : 0;
 
         // Tìm kênh log
         const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID).catch(() => null);
@@ -1144,7 +1153,7 @@ client.on('messageCreate', async message => {
                      console.log(`Không thể DM cảnh cáo cho ${message.author.tag}`);
                 }
 
-                const warningMessage = await message.channel.send(`<:PridecordWarning:1412665674026717207> ${message.author}, đây là cảnh cáo đầu tiên của bạn. Hãy đọc lại luật trước khi chat tiếp!`);
+                const warningMessage = await message.channel.send(`${message.author}, bạn đã bị cảnh cáo lần 1 vì sử dụng ngôn từ không phù hợp. Vui lòng kiểm tra tin nhắn riêng để biết chi tiết.`);
                 setTimeout(() => warningMessage.delete().catch(console.error), 10000); // Tự xóa sau 10s
 
                 if (logChannel) {
@@ -1154,7 +1163,7 @@ client.on('messageCreate', async message => {
                         .addFields(
                             { name: 'Thành viên', value: `${message.author} (${message.author.tag})`, inline: true },
                             { name: 'Hành động', value: 'Cảnh cáo (Lần 1)', inline: true },
-                            { name: 'Kênh', value: `${message.channel}`, inline: true },
+                            { name: 'Tổng cảnh cáo', value: `${warnCount}`, inline: true },
                             { name: 'Lý do', value: reason }
                         )
                         .setTimestamp();
@@ -1171,8 +1180,8 @@ client.on('messageCreate', async message => {
 
                         const dmEmbed = new EmbedBuilder()
                             .setColor('Orange')
-                            .setTitle(`<a:Purp_Alert:1413004990037098547> Thông báo xử phạt tại server ${message.guild.name} <a:Purp_Alert:1413004990037098547>`)
-                            .setDescription(`<:PridecordWarning:1412665674026717207> Do tái phạm nội quy, bạn đã bị tạm thời cấm chat trong **${TIMEOUT_DURATION}**.\n\nLý do: \`${reason}\`\n\n**LƯU Ý:** Vi phạm thêm một lần nữa sẽ dẫn đến hình phạt cao nhất là **BAN VĨNH VIỄN**. <:PridecordWarning:1412665674026717207>`)
+                            .setTitle(`Bạn đã bị Timeout tại ${message.guild.name}`)
+                            .setDescription(`Bạn đã bị timeout **${TIMEOUT_DURATION}** vì tái phạm.\n**Lý do:** ${reason}\n\n⚠️ **Đây là cảnh cáo lần 2. Vi phạm lần nữa sẽ dẫn đến bị Ban vĩnh viễn.**`)
                             .setTimestamp();
                         await message.author.send({ embeds: [dmEmbed] });
 
@@ -1183,7 +1192,7 @@ client.on('messageCreate', async message => {
                                 .addFields(
                                     { name: 'Thành viên', value: `${message.author} (${message.author.tag})`, inline: true },
                                     { name: 'Hành động', value: `Timeout ${TIMEOUT_DURATION} (Lần 2)`, inline: true },
-                                    { name: 'Kênh', value: `${message.channel}`, inline: true },
+                                    { name: 'Tổng cảnh cáo', value: `${warnCount}`, inline: true },
                                     { name: 'Lý do', value: reason }
                                 )
                                 .setTimestamp();
@@ -1197,37 +1206,39 @@ client.on('messageCreate', async message => {
                 }
                 break;
             
-            // Lần 3: Ban
-            case 3:
-                try {
-                     if (message.member.bannable) {
-                        const dmEmbed = new EmbedBuilder()
-                            .setColor('Red')
-                            .setTitle(`<a:Purp_Alert:1413004990037098547> Bạn đã bị Ban vĩnh viễn khỏi ${message.guild.name} <a:Purp_Alert:1413004990037098547>`)
-                            .setDescription(`Bạn đã bị ban vĩnh viễn vì vi phạm lần thứ 3.\n**Lý do:** ${reason}`)
-                            .setTimestamp();
-                        await message.author.send({ embeds: [dmEmbed] }).catch(() => console.log(`Không thể DM thông báo ban cho ${message.author.tag}`));
-
-                        await message.member.ban({ reason });
-
-                         if (logChannel) {
-                             const logEmbed = new EmbedBuilder()
+            // Từ lần 3 trở đi: Ban
+            default: // Sử dụng default để xử lý cho trường hợp >= 3
+                if (warnCount >= 3) {
+                    try {
+                         if (message.member.bannable) {
+                            const dmEmbed = new EmbedBuilder()
                                 .setColor('Red')
-                                .setTitle('Auto-Mod: Ban vĩnh viễn')
-                                .addFields(
-                                    { name: 'Thành viên', value: `${message.author} (${message.author.tag})`, inline: true },
-                                    { name: 'Hành động', value: 'Ban vĩnh viễn (Lần 3)', inline: true },
-                                    { name: 'Kênh', value: `${message.channel}`, inline: true },
-                                    { name: 'Lý do', value: reason }
-                                )
+                                .setTitle(`Bạn đã bị Ban vĩnh viễn khỏi ${message.guild.name}`)
+                                .setDescription(`Bạn đã bị ban vĩnh viễn vì vi phạm lần thứ 3.\n**Lý do:** ${reason}`)
                                 .setTimestamp();
-                            logChannel.send({ embeds: [logEmbed] });
+                            await message.author.send({ embeds: [dmEmbed] }).catch(() => console.log(`Không thể DM thông báo ban cho ${message.author.tag}`));
+    
+                            await message.member.ban({ reason });
+    
+                             if (logChannel) {
+                                 const logEmbed = new EmbedBuilder()
+                                    .setColor('Red')
+                                    .setTitle('Auto-Mod: Ban vĩnh viễn')
+                                    .addFields(
+                                        { name: 'Thành viên', value: `${message.author} (${message.author.tag})`, inline: true },
+                                        { name: 'Hành động', value: 'Ban vĩnh viễn (Lần 3+)', inline: true },
+                                        { name: 'Tổng cảnh cáo', value: `${warnCount}`, inline: true },
+                                        { name: 'Lý do', value: reason }
+                                    )
+                                    .setTimestamp();
+                                logChannel.send({ embeds: [logEmbed] });
+                            }
+                        } else {
+                             if (logChannel) logChannel.send(`⚠️ **Auto-Mod Lỗi:** Không thể ban ${message.author} do thiếu quyền.`);
                         }
-                    } else {
-                         if (logChannel) logChannel.send(`⚠️ **Auto-Mod Lỗi:** Không thể ban ${message.author} do thiếu quyền.`);
+                    } catch (error) {
+                        console.error("Auto-Mod: Lỗi khi ban", error);
                     }
-                } catch (error) {
-                    console.error("Auto-Mod: Lỗi khi ban", error);
                 }
                 break;
         }
