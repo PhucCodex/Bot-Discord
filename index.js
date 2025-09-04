@@ -18,14 +18,18 @@ const Database = require('better-sqlite3');
 const db = new Database('/data/data.db');
 
 // --- CẤU HÌNH CHO AUTO-MOD ---
-// ⚠️ THAY ID KÊNH LOG CỦA BẠN VÀO ĐÂY
-const MOD_LOG_CHANNEL_ID = '1413071939395653722'; // <--- ⚠️ THAY ID KÊNH LOG CỦA BẠN VÀO ĐÂY
-
-// ⚠️ THÊM CÁC TỪ BẠN MUỐN CẤM VÀO ĐÂY (viết chữ thường)
+const MOD_LOG_CHANNEL_ID = '1413071939395653722';
 const FORBIDDEN_WORDS = ['lồn', 'cặc', 'badword', 'ngu',];
+const TIMEOUT_DURATION = '60m';
 
-// ⚠️ CẤU HÌNH THỜI GIAN TIMEOUT CHO LẦN VI PHẠM THỨ 2
-const TIMEOUT_DURATION = '60m'; // Ví dụ: 10 phút. Bạn có thể đổi thành '1h', '6h'...
+// ================================================================= //
+// --- CẤU HÌNH MỚI CHO HỆ THỐNG LEVEL ---
+// ================================================================= //
+const XP_PER_MESSAGE = 10;
+const XP_PER_MINUTE_IN_VOICE = 20;
+const DAILY_REWARD = 500; // Lượng XP nhận được từ /daily
+const MESSAGE_COOLDOWN_SECONDS = 60; // Chờ 60 giây giữa 2 tin nhắn để nhận XP
+// ================================================================= //
 
 function setupDatabase() {
     db.exec(`
@@ -45,8 +49,6 @@ function setupDatabase() {
         )
     `);
 
-    // --- BẢNG MỚI CHO HỆ THỐNG AUTO-MOD (ĐÃ SỬA LỖI) ---
-    // Lỗi đã được sửa ở đây: Xóa bỏ UNIQUE constraint để có thể lưu nhiều cảnh cáo
     db.exec(`
         CREATE TABLE IF NOT EXISTS warnings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +58,23 @@ function setupDatabase() {
             timestamp INTEGER
         )
     `);
-    // --- KẾT THÚC BẢNG MỚI ---
+    
+    // ================================================================= //
+    // --- BẢNG MỚI CHO HỆ THỐNG LEVEL ---
+    // ================================================================= //
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS user_stats (
+            id TEXT PRIMARY KEY,
+            userId TEXT NOT NULL,
+            guildId TEXT NOT NULL,
+            xp INTEGER DEFAULT 0,
+            level INTEGER DEFAULT 0,
+            lastDaily INTEGER DEFAULT 0,
+            voiceJoinTimestamp INTEGER DEFAULT 0,
+            UNIQUE(userId, guildId)
+        )
+    `);
+    // ================================================================= //
 
     const stmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
     stmt.run('ticketCounter', '1');
@@ -66,6 +84,29 @@ function setupDatabase() {
 
 setupDatabase();
 
+// ================================================================= //
+// --- CÁC HÀM HỖ TRỢ MỚI CHO HỆ THỐNG LEVEL ---
+// ================================================================= //
+function getUserStats(userId, guildId) {
+    let user = db.prepare('SELECT * FROM user_stats WHERE userId = ? AND guildId = ?').get(userId, guildId);
+    if (!user) {
+        const id = `${userId}-${guildId}`;
+        db.prepare('INSERT INTO user_stats (id, userId, guildId) VALUES (?, ?, ?)')
+          .run(id, userId, guildId);
+        user = { id, userId, guildId, xp: 0, level: 0, lastDaily: 0, voiceJoinTimestamp: 0 };
+    }
+    return user;
+}
+
+function updateUserXP(userId, guildId, newXp) {
+    const newLevel = Math.floor(newXp / 100);
+    db.prepare('UPDATE user_stats SET xp = ?, level = ? WHERE userId = ? AND guildId = ?')
+      .run(newXp, newLevel, userId, guildId);
+    return { newXp, newLevel };
+}
+// ================================================================= //
+
+
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1128546415250198539';
 const SUPPORT_ROLE_ID = '1412090993909563534';    
 const WELCOME_CHANNEL_ID = '1406560267214524527';
@@ -74,12 +115,10 @@ const AUTO_ROLE_ID = '1406560015925514290';
 const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif'
 const CHAT_CHANNEL_ID = '1408709235478368267';
 const SUPPORT_CHANNEL_ID = '1412323492162174988';
-// --- CÁC ID CATEGORY MỚI CHO TICKET ---
-const SUPPORT_TICKET_CATEGORY_ID = '1413009121606631456'; // ⚠️ ID Category cho ticket Hỗ Trợ
-const ADMIN_TICKET_CATEGORY_ID = '1413009227156291634'; // ⚠️ ID Category cho ticket Admin
+const SUPPORT_TICKET_CATEGORY_ID = '1413009121606631456';
+const ADMIN_TICKET_CATEGORY_ID = '1413009227156291634';
 
 const commands = [
-    // ... (Toàn bộ phần commands của bạn giữ nguyên, không cần thay đổi)
     new SlashCommandBuilder()
         .setName('info')
         .setDescription('Hiển thị thông tin người dùng hoặc server.')
@@ -307,7 +346,6 @@ const commands = [
         .setDescription('Reset số đếm của ticket về lại 1.')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         
-    // --- LỆNH MỚI CHO AUTO-MOD ---
     new SlashCommandBuilder()
         .setName('warnings')
         .setDescription('Kiểm tra số lần cảnh cáo của một thành viên.')
@@ -319,7 +357,45 @@ const commands = [
         .setDescription('Xóa toàn bộ cảnh cáo của một thành viên.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần xóa cảnh cáo.').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    // --- KẾT THÚC LỆNH MỚI ---
+
+    // ================================================================= //
+    // --- CÁC LỆNH MỚI CHO HỆ THỐNG LEVEL ---
+    // ================================================================= //
+    new SlashCommandBuilder()
+        .setName('level')
+        .setDescription('Xem thông tin level của bạn hoặc người khác.')
+        .addUserOption(option => option.setName('user').setDescription('Người bạn muốn xem level.')),
+
+    new SlashCommandBuilder()
+        .setName('daily')
+        .setDescription('Nhận phần thưởng XP hàng ngày.'),
+    
+    new SlashCommandBuilder()
+        .setName('leaderboard')
+        .setDescription('Xem bảng xếp hạng level của server.'),
+
+    new SlashCommandBuilder()
+        .setName('add-xp')
+        .setDescription('[Admin] Cộng XP cho một thành viên.')
+        .addUserOption(option => option.setName('user').setDescription('Thành viên cần cộng XP.').setRequired(true))
+        .addIntegerOption(option => option.setName('amount').setDescription('Số XP cần cộng.').setRequired(true).setMinValue(1))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('remove-xp')
+        .setDescription('[Admin] Trừ XP của một thành viên.')
+        .addUserOption(option => option.setName('user').setDescription('Thành viên cần trừ XP.').setRequired(true))
+        .addIntegerOption(option => option.setName('amount').setDescription('Số XP cần trừ.').setRequired(true).setMinValue(1))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    new SlashCommandBuilder()
+        .setName('set-level')
+        .setDescription('[Admin] Thiết lập level chính xác cho một thành viên.')
+        .addUserOption(option => option.setName('user').setDescription('Thành viên cần set level.').setRequired(true))
+        .addIntegerOption(option => option.setName('level').setDescription('Level muốn thiết lập.').setRequired(true).setMinValue(0))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    // ================================================================= //
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -337,9 +413,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     }
 })();
 
-// --- THÊM INTENTS MỚI ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-// --- KẾT THÚC THÊM INTENTS ---
 
 async function removeTempRole(userId, guildId, roleId) {
     const guild = await client.guilds.fetch(guildId).catch(() => null);
@@ -470,9 +544,8 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isChatInputCommand()) {
-        const { commandName } = interaction;
+        const { commandName, user, guild } = interaction;
 
-        // ... (Toàn bộ các lệnh slash của bạn từ info -> resettickets)
         if (commandName === 'info') {
              await interaction.deferReply();
              const subcommand = interaction.options.getSubcommand();
@@ -1001,8 +1074,6 @@ client.on('interactionCreate', async interaction => {
             db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run('1', 'ticketCounter');
             await interaction.reply({ content: '✅ Đã reset số đếm ticket về lại 1 trong database.', ephemeral: true });
         }
-
-        // --- HANDLER CHO CÁC LỆNH MỚI ---
         else if (commandName === 'warnings') {
             await interaction.deferReply();
             const target = interaction.options.getMember('người');
@@ -1024,14 +1095,110 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             const target = interaction.options.getMember('người');
             if (!target) {
-                return interaction.followUp({ content: 'Không tìm thấy thành viên này.' });
+                return interaction.followUp({ content: 'Không tìm thấy thành viên này.', ephemeral: true });
             }
 
             db.prepare('DELETE FROM warnings WHERE userId = ? AND guildId = ?').run(target.id, interaction.guild.id);
 
             await interaction.followUp({ content: `✅ Đã xóa toàn bộ cảnh cáo cho ${target}.` });
         }
-        // --- KẾT THÚC HANDLER ---
+
+        // ================================================================= //
+        // --- HANDLER CHO CÁC LỆNH LEVEL MỚI ---
+        // ================================================================= //
+        else if (commandName === 'level') {
+            const targetUser = interaction.options.getUser('user') || user;
+            const userData = getUserStats(targetUser.id, guild.id);
+    
+            const xpForCurrentLevel = userData.level * 100;
+            const xpForNextLevel = (userData.level + 1) * 100;
+            const currentProgress = userData.xp - xpForCurrentLevel;
+            const neededProgress = xpForNextLevel - xpForCurrentLevel;
+            
+            const percentage = Math.max(0, Math.min(100, (currentProgress / neededProgress) * 100));
+            const progressBar = '█'.repeat(Math.floor(percentage / 10)) + '─'.repeat(10 - Math.floor(percentage / 10));
+            
+            const rankEmbed = new EmbedBuilder()
+                .setColor('Random')
+                .setAuthor({ name: `Thông tin level của ${targetUser.username}`, iconURL: targetUser.displayAvatarURL() })
+                .setThumbnail(targetUser.displayAvatarURL())
+                .addFields(
+                    { name: '🌟 Level', value: `**${userData.level}**`, inline: true },
+                    { name: '📈 Tổng XP', value: `**${userData.xp}**`, inline: true },
+                    { name: '📊 Tiến trình', value: `\`${progressBar}\`\n**${currentProgress}** / **${neededProgress}** XP` }
+                );
+            await interaction.reply({ embeds: [rankEmbed] });
+        }
+    
+        else if (commandName === 'daily') {
+            const userData = getUserStats(user.id, guild.id);
+            const cooldown = 24 * 60 * 60 * 1000; // 24 giờ
+            const timeSinceLastDaily = Date.now() - userData.lastDaily;
+    
+            if (timeSinceLastDaily < cooldown) {
+                const timeLeft = cooldown - timeSinceLastDaily;
+                return interaction.reply({ content: `Bạn cần chờ **${ms(timeLeft, { long: true })}** nữa để nhận thưởng daily.`, ephemeral: true });
+            }
+            
+            const oldLevel = userData.level;
+            const { newLevel } = updateUserXP(user.id, guild.id, userData.xp + DAILY_REWARD);
+            db.prepare('UPDATE user_stats SET lastDaily = ? WHERE id = ?').run(Date.now(), `${user.id}-${guild.id}`);
+    
+            await interaction.reply(`🎉 Bạn đã nhận được **${DAILY_REWARD} XP** từ thưởng daily!`);
+            if (newLevel > oldLevel) {
+                await interaction.followUp(`🎉 Chúc mừng ${user}, bạn đã lên **Level ${newLevel}**!`);
+            }
+        }
+    
+        else if (commandName === 'leaderboard') {
+            await interaction.deferReply();
+            const topUsers = db.prepare('SELECT * FROM user_stats WHERE guildId = ? ORDER BY xp DESC LIMIT 10').all(guild.id);
+    
+            if (topUsers.length === 0) {
+                return interaction.followUp('Chưa có ai trên bảng xếp hạng cả.');
+            }
+    
+            const leaderboardDescription = await Promise.all(
+                topUsers.map(async (u, index) => {
+                    const member = await guild.members.fetch(u.userId).catch(() => null);
+                    const username = member ? member.user.username : `*Người dùng đã rời đi*`;
+                    return `**${index + 1}.** ${username} - **Level ${u.level}** (${u.xp} XP)`;
+                })
+            );
+    
+            const lbEmbed = new EmbedBuilder()
+                .setTitle(`🏆 Bảng Xếp Hạng Level - ${guild.name}`)
+                .setDescription(leaderboardDescription.join('\n'))
+                .setColor('Gold');
+            await interaction.followUp({ embeds: [lbEmbed] });
+        }
+        
+        else if (commandName === 'add-xp') {
+            const targetUser = interaction.options.getUser('user');
+            const amount = interaction.options.getInteger('amount');
+            const userData = getUserStats(targetUser.id, guild.id);
+            const finalXp = userData.xp + amount;
+            const { newLevel } = updateUserXP(targetUser.id, guild.id, finalXp);
+            await interaction.reply({ content: `✅ Đã cộng **${amount} XP** cho ${targetUser}. Họ hiện ở **Level ${newLevel}** với **${finalXp} XP**.`, ephemeral: true });
+        }
+    
+        else if (commandName === 'remove-xp') {
+            const targetUser = interaction.options.getUser('user');
+            const amount = interaction.options.getInteger('amount');
+            const userData = getUserStats(targetUser.id, guild.id);
+            const finalXp = Math.max(0, userData.xp - amount);
+            const { newLevel } = updateUserXP(targetUser.id, guild.id, finalXp);
+            await interaction.reply({ content: `✅ Đã trừ **${amount} XP** của ${targetUser}. Họ hiện ở **Level ${newLevel}** với **${finalXp} XP**.`, ephemeral: true });
+        }
+    
+        else if (commandName === 'set-level') {
+            const targetUser = interaction.options.getUser('user');
+            const level = interaction.options.getInteger('level');
+            const requiredXp = level * 100;
+            updateUserXP(targetUser.id, guild.id, requiredXp);
+            await interaction.reply({ content: `✅ Đã thiết lập ${targetUser} thành **Level ${level}** với **${requiredXp} XP**.`, ephemeral: true });
+        }
+        // ================================================================= //
     }
 
     if (interaction.isStringSelectMenu()) {
@@ -1098,12 +1265,31 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// --- CODE MỚI CHO HỆ THỐNG AUTO-MOD ---
+const messageCooldown = new Set();
 client.on('messageCreate', async message => {
-    // Bỏ qua tin nhắn từ bot hoặc tin nhắn riêng
     if (message.author.bot || !message.guild) return;
 
-    // Bỏ qua người có quyền admin
+    // ================================================================= //
+    // --- PHẦN 1: LOGIC TÍNH LEVEL KHI CHAT ---
+    // ================================================================= //
+    if (!messageCooldown.has(message.author.id)) {
+        const userStats = getUserStats(message.author.id, message.guild.id);
+        const oldLevel = userStats.level;
+        const { newLevel } = updateUserXP(userStats.userId, userStats.guildId, userStats.xp + XP_PER_MESSAGE);
+        
+        if (newLevel > oldLevel) {
+            message.channel.send(`🎉 Chúc mừng ${message.author}, bạn đã lên **Level ${newLevel}**!`).catch(console.error);
+        }
+        
+        messageCooldown.add(message.author.id);
+        setTimeout(() => {
+            messageCooldown.delete(message.author.id);
+        }, MESSAGE_COOLDOWN_SECONDS * 1000);
+    }
+    
+    // ================================================================= //
+    // --- PHẦN 2: LOGIC AUTO-MOD (CODE CŨ CỦA BẠN) ---
+    // ================================================================= //
     if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return;
     }
@@ -1112,7 +1298,6 @@ client.on('messageCreate', async message => {
     const hasForbiddenWord = FORBIDDEN_WORDS.some(word => messageContent.includes(word));
 
     if (hasForbiddenWord) {
-        // Xóa tin nhắn vi phạm
         try {
             await message.delete();
         } catch (error) {
@@ -1122,25 +1307,20 @@ client.on('messageCreate', async message => {
         const reason = 'Sử dụng ngôn từ không phù hợp (Tự động bởi Bot).';
         const timestamp = Date.now();
         
-        // Thêm cảnh cáo vào DB (đã sửa)
         try {
             const stmt = db.prepare('INSERT INTO warnings (userId, guildId, reason, timestamp) VALUES (?, ?, ?, ?)');
             stmt.run(message.author.id, message.guild.id, reason, timestamp);
         } catch (dbError) {
             console.error("Lỗi khi ghi cảnh cáo vào DB:", dbError);
-            return; // Dừng lại nếu không ghi được vào DB
+            return;
         }
         
-        // Đếm tổng số cảnh cáo (đã sửa)
         const row = db.prepare('SELECT COUNT(*) as count FROM warnings WHERE userId = ? AND guildId = ?').get(message.author.id, message.guild.id);
         const warnCount = row ? row.count : 0;
 
-        // Tìm kênh log
         const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID).catch(() => null);
 
-        // Xử lý theo số lần vi phạm
         switch (warnCount) {
-            // Lần 1: Cảnh cáo
             case 1:
                 try {
                     const dmEmbed = new EmbedBuilder()
@@ -1154,7 +1334,7 @@ client.on('messageCreate', async message => {
                 }
 
                 const warningMessage = await message.channel.send(`${message.author}, bạn đã bị cảnh cáo lần 1 vì sử dụng ngôn từ không phù hợp. Vui lòng kiểm tra tin nhắn riêng để biết chi tiết.`);
-                setTimeout(() => warningMessage.delete().catch(console.error), 10000); // Tự xóa sau 10s
+                setTimeout(() => warningMessage.delete().catch(console.error), 10000);
 
                 if (logChannel) {
                     const logEmbed = new EmbedBuilder()
@@ -1170,8 +1350,6 @@ client.on('messageCreate', async message => {
                     logChannel.send({ embeds: [logEmbed] });
                 }
                 break;
-
-            // Lần 2: Timeout
             case 2:
                 try {
                     if (message.member.moderatable) {
@@ -1205,9 +1383,7 @@ client.on('messageCreate', async message => {
                     console.error("Auto-Mod: Lỗi khi timeout", error);
                 }
                 break;
-            
-            // Từ lần 3 trở đi: Ban
-            default: // Sử dụng default để xử lý cho trường hợp >= 3
+            default:
                 if (warnCount >= 3) {
                     try {
                          if (message.member.bannable) {
@@ -1244,7 +1420,46 @@ client.on('messageCreate', async message => {
         }
     }
 });
-// --- KẾT THÚC CODE AUTO-MOD ---
+
+// ================================================================= //
+// --- SỰ KIỆN MỚI: VOICE STATE UPDATE (CỘNG XP VOICE) ---
+// ================================================================= //
+client.on('voiceStateUpdate', (oldState, newState) => {
+    const userId = newState.id;
+    const guildId = newState.guild.id;
+
+    if (newState.member.user.bot) return;
+
+    const isJoining = (!oldState.channelId && newState.channelId);
+    if (isJoining) {
+        const user = getUserStats(userId, guildId);
+        db.prepare('UPDATE user_stats SET voiceJoinTimestamp = ? WHERE id = ?').run(Date.now(), `${userId}-${guildId}`);
+    } 
+    
+    const isLeaving = (oldState.channelId && !newState.channelId);
+    if (isLeaving) {
+        const user = getUserStats(userId, guildId);
+        if (user.voiceJoinTimestamp > 0) {
+            const durationMs = Date.now() - user.voiceJoinTimestamp;
+            const durationMinutes = Math.floor(durationMs / 60000);
+
+            if (durationMinutes > 0) {
+                const xpGained = durationMinutes * XP_PER_MINUTE_IN_VOICE;
+                const oldLevel = user.level;
+                const { newLevel } = updateUserXP(user.userId, user.guildId, user.xp + xpGained);
+
+                if (newLevel > oldLevel) {
+                    const channel = newState.guild.systemChannel;
+                    if (channel) {
+                        channel.send(`🎉 Chúc mừng ${newState.member}, bạn đã lên **Level ${newLevel}** nhờ tham gia kênh thoại!`).catch(console.error);
+                    }
+                }
+            }
+            db.prepare('UPDATE user_stats SET voiceJoinTimestamp = 0 WHERE id = ?').run(`${userId}-${guildId}`);
+        }
+    }
+});
+// ================================================================= //
 
 client.login(process.env.DISCORD_TOKEN);
 
