@@ -385,13 +385,13 @@ client.on('interactionCreate', async interaction => {
                         label: 'Hỗ trợ Chung',
                         description: 'Các vấn đề về lỗi, kỹ thuật hoặc cần hướng dẫn.',
                         value: 'technical_support',
-                        emoji: '🛠️'
+                        emoji: '<a:chat:1413005097633583214>'
                     },
                     {
                         label: 'Liên hệ Admin',
-                        description: 'Báo cáo người dùng, góp ý hoặc các vấn đề khác.',
+                        description: 'Liên hệ với em Phúc.',
                         value: 'admin_contact',
-                        emoji: '👑'
+                        emoji: '<a:Purp_Alert:1413004990037098547>'
                     }
                 ]);
 
@@ -838,9 +838,9 @@ client.on('interactionCreate', async interaction => {
 
             const openButton = new ButtonBuilder()
                 .setCustomId('show_ticket_options')
-                .setLabel('Mở Ticket')
+                .setLabel('Mở Ticket 2.0')
                 .setStyle(ButtonStyle.Primary)
-                .setEmoji('📧');
+                .setEmoji('<:Email37:1412322372790255636>');
             
             const row = new ActionRowBuilder().addComponents(openButton);
 
@@ -955,17 +955,20 @@ client.on('interactionCreate', async interaction => {
             let categoryId;
             let ticketType;
             let welcomeMessage;
+            let ticketContent;
 
             switch (selectedValue) {
                 case 'technical_support':
                     categoryId = SUPPORT_TICKET_CATEGORY_ID;
-                    ticketType = 'ho-tro';
+                    ticketType = 'hỗ-trợ';
                     welcomeMessage = `Hỗ trợ bạn về vấn đề **Kỹ thuật/Chung**. Vui lòng trình bày chi tiết vấn đề bạn đang gặp phải.`;
+                    ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`
                     break;
                 case 'admin_contact':
                     categoryId = ADMIN_TICKET_CATEGORY_ID;
                     ticketType = 'admin';
-                    welcomeMessage = `Hỗ trợ bạn về vấn đề cần **Liên hệ Admin**. Vui lòng cho chúng tôi biết yêu cầu của bạn.`;
+                    welcomeMessage = `**Cần alo ngay em Phúc**`;
+                    ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ về vấn đề gì hoặc khiếu nại thì cứ ghi vào nhé**`
                     break;
                 default:
                     return interaction.followUp({ content: 'Lựa chọn không hợp lệ.' });
@@ -996,7 +999,7 @@ client.on('interactionCreate', async interaction => {
                     .setTimestamp();
                 const closeButton = new ButtonBuilder().setCustomId('close_ticket').setLabel('Đóng Ticket').setStyle(ButtonStyle.Danger);
                 const row = new ActionRowBuilder().addComponents(closeButton);
-                await ticketChannel.send({ embeds: [ticketWelcomeEmbed], components: [row] });
+                await ticketChannel.send({ content: ticketContent, embeds: [ticketWelcomeEmbed], components: [row] });
 
                 await interaction.followUp({ content: `Đã tạo ticket của bạn tại ${ticketChannel}.` });
 
