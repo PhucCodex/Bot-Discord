@@ -828,7 +828,7 @@ client.on('interactionCreate', async interaction => {
             const moTa = interaction.options.getString('mo_ta').replace(/\\n/g, '\n');
             const content = interaction.options.getString('content');
             const hinhAnh = interaction.options.getString('hinh_anh');
-            const bannerUrl = interaction.options.getString('ảnh_banner')
+            const bannerUrl = interaction.options.getString('anh_banner');
             const mauSac = interaction.options.getString('mau_sac');
 
             if (bannerUrl) {
