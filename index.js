@@ -1203,7 +1203,7 @@ client.on('messageCreate', async message => {
                      if (message.member.bannable) {
                         const dmEmbed = new EmbedBuilder()
                             .setColor('Red')
-                            .setTitle(`<a:Purp_Alert:1413004990037098547> Bạn đã bị Ban vĩnh viễn khỏi ${message.guild.name}` <a:Purp_Alert:1413004990037098547>)
+                            .setTitle(`<a:Purp_Alert:1413004990037098547> Bạn đã bị Ban vĩnh viễn khỏi ${message.guild.name} <a:Purp_Alert:1413004990037098547>`)
                             .setDescription(`Bạn đã bị ban vĩnh viễn vì vi phạm lần thứ 3.\n**Lý do:** ${reason}`)
                             .setTimestamp();
                         await message.author.send({ embeds: [dmEmbed] }).catch(() => console.log(`Không thể DM thông báo ban cho ${message.author.tag}`));
