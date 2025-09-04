@@ -23,13 +23,20 @@ const FORBIDDEN_WORDS = ['lồn', 'cặc', 'badword', 'ngu',];
 const TIMEOUT_DURATION = '60m';
 
 // ================================================================= //
-// --- CẤU HÌNH MỚI CHO HỆ THỐNG LEVEL ---
+// --- CẤU HÌNH CHO HỆ THỐNG LEVEL ---
 // ================================================================= //
 const XP_PER_MESSAGE = 10;
 const XP_PER_MINUTE_IN_VOICE = 20;
 const DAILY_REWARD = 500; // Lượng XP nhận được từ /daily
 const MESSAGE_COOLDOWN_SECONDS = 60; // Chờ 60 giây giữa 2 tin nhắn để nhận XP
+
 // ================================================================= //
+// --- VAI TRÒ KHÔNG NHẬN XP ---
+// ⚠️ THAY ID VAI TRÒ BẠN MUỐN CHẶN NHẬN XP VÀO ĐÂY
+// Để trống ('') nếu bạn không muốn dùng tính năng này.
+const NO_XP_ROLE_ID = '1412420393167355975'; 
+// ================================================================= //
+
 
 function setupDatabase() {
     db.exec(`
@@ -59,9 +66,6 @@ function setupDatabase() {
         )
     `);
     
-    // ================================================================= //
-    // --- BẢNG MỚI CHO HỆ THỐNG LEVEL ---
-    // ================================================================= //
     db.exec(`
         CREATE TABLE IF NOT EXISTS user_stats (
             id TEXT PRIMARY KEY,
@@ -74,7 +78,6 @@ function setupDatabase() {
             UNIQUE(userId, guildId)
         )
     `);
-    // ================================================================= //
 
     const stmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
     stmt.run('ticketCounter', '1');
@@ -84,9 +87,6 @@ function setupDatabase() {
 
 setupDatabase();
 
-// ================================================================= //
-// --- CÁC HÀM HỖ TRỢ MỚI CHO HỆ THỐNG LEVEL ---
-// ================================================================= //
 function getUserStats(userId, guildId) {
     let user = db.prepare('SELECT * FROM user_stats WHERE userId = ? AND guildId = ?').get(userId, guildId);
     if (!user) {
@@ -104,7 +104,6 @@ function updateUserXP(userId, guildId, newXp) {
       .run(newXp, newLevel, userId, guildId);
     return { newXp, newLevel };
 }
-// ================================================================= //
 
 
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1128546415250198539';
@@ -358,9 +357,6 @@ const commands = [
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần xóa cảnh cáo.').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
-    // ================================================================= //
-    // --- CÁC LỆNH MỚI CHO HỆ THỐNG LEVEL ---
-    // ================================================================= //
     new SlashCommandBuilder()
         .setName('level')
         .setDescription('Xem thông tin level của bạn hoặc người khác.')
@@ -394,7 +390,6 @@ const commands = [
         .addUserOption(option => option.setName('user').setDescription('Thành viên cần set level.').setRequired(true))
         .addIntegerOption(option => option.setName('level').setDescription('Level muốn thiết lập.').setRequired(true).setMinValue(0))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    // ================================================================= //
 
 ].map(command => command.toJSON());
 
@@ -1103,9 +1098,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.followUp({ content: `✅ Đã xóa toàn bộ cảnh cáo cho ${target}.` });
         }
 
-        // ================================================================= //
-        // --- HANDLER CHO CÁC LỆNH LEVEL MỚI ---
-        // ================================================================= //
         else if (commandName === 'level') {
             const targetUser = interaction.options.getUser('user') || user;
             const userData = getUserStats(targetUser.id, guild.id);
@@ -1131,8 +1123,11 @@ client.on('interactionCreate', async interaction => {
         }
     
         else if (commandName === 'daily') {
+            if (interaction.member.roles.cache.has(NO_XP_ROLE_ID)) {
+                return interaction.reply({ content: 'Bạn đang có vai trò không nhận XP nên không thể sử dụng lệnh này.', ephemeral: true });
+            }
             const userData = getUserStats(user.id, guild.id);
-            const cooldown = 24 * 60 * 60 * 1000; // 24 giờ
+            const cooldown = 24 * 60 * 60 * 1000;
             const timeSinceLastDaily = Date.now() - userData.lastDaily;
     
             if (timeSinceLastDaily < cooldown) {
@@ -1198,7 +1193,6 @@ client.on('interactionCreate', async interaction => {
             updateUserXP(targetUser.id, guild.id, requiredXp);
             await interaction.reply({ content: `✅ Đã thiết lập ${targetUser} thành **Level ${level}** với **${requiredXp} XP**.`, ephemeral: true });
         }
-        // ================================================================= //
     }
 
     if (interaction.isStringSelectMenu()) {
@@ -1269,9 +1263,10 @@ const messageCooldown = new Set();
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // ================================================================= //
-    // --- PHẦN 1: LOGIC TÍNH LEVEL KHI CHAT ---
-    // ================================================================= //
+    if (NO_XP_ROLE_ID && message.member.roles.cache.has(NO_XP_ROLE_ID)) {
+        return; 
+    }
+
     if (!messageCooldown.has(message.author.id)) {
         const userStats = getUserStats(message.author.id, message.guild.id);
         const oldLevel = userStats.level;
@@ -1287,9 +1282,6 @@ client.on('messageCreate', async message => {
         }, MESSAGE_COOLDOWN_SECONDS * 1000);
     }
     
-    // ================================================================= //
-    // --- PHẦN 2: LOGIC AUTO-MOD (CODE CŨ CỦA BẠN) ---
-    // ================================================================= //
     if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return;
     }
@@ -1421,14 +1413,15 @@ client.on('messageCreate', async message => {
     }
 });
 
-// ================================================================= //
-// --- SỰ KIỆN MỚI: VOICE STATE UPDATE (CỘNG XP VOICE) ---
-// ================================================================= //
 client.on('voiceStateUpdate', (oldState, newState) => {
     const userId = newState.id;
     const guildId = newState.guild.id;
 
     if (newState.member.user.bot) return;
+
+    if (NO_XP_ROLE_ID && newState.member.roles.cache.has(NO_XP_ROLE_ID)) {
+        return;
+    }
 
     const isJoining = (!oldState.channelId && newState.channelId);
     if (isJoining) {
@@ -1459,7 +1452,6 @@ client.on('voiceStateUpdate', (oldState, newState) => {
         }
     }
 });
-// ================================================================= //
 
 client.login(process.env.DISCORD_TOKEN);
 
