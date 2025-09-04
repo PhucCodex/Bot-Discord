@@ -10,23 +10,14 @@ app.listen(port, () => {
   console.log(`Server đang lắng nghe tại http://localhost:${port}`);
 });
 
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder } = require('discord.js');
 const ms = require('ms');
 require('dotenv').config();
 
-// <<< THÊM THƯ VIỆN DATABASE
 const Database = require('better-sqlite3');
-
-// <<< KẾT NỐI TỚI FILE DATABASE TRONG VOLUME CỦA RAILWAY
 const db = new Database('/data/data.db');
 
-// <<< XÓA CÁC BIẾN LƯU TRONG BỘ NHỚ
-// let ticketCounter = 1;
-// const activeRoleTimeouts = new Map(); 
-
-// <<< HÀM THIẾT LẬP DATABASE LẦN ĐẦU
 function setupDatabase() {
-    // Bảng này dùng để lưu các cài đặt đơn lẻ như ticketCounter
     db.exec(`
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -34,7 +25,6 @@ function setupDatabase() {
         )
     `);
     
-    // Bảng này dùng để lưu các lịch hẹn gỡ vai trò
     db.exec(`
         CREATE TABLE IF NOT EXISTS temp_roles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,26 +35,25 @@ function setupDatabase() {
         )
     `);
 
-    // Khởi tạo ticketCounter nếu chưa có
     const stmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
     stmt.run('ticketCounter', '1');
 
     console.log('✅ Database đã được thiết lập và sẵn sàng.');
 }
 
-// <<< CHẠY HÀM THIẾT LẬP NGAY KHI BOT KHỞI ĐỘNG
 setupDatabase();
 
-
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1128546415250198539';
-const TICKET_CATEGORY_ID = '1412100711931445452'; 
 const SUPPORT_ROLE_ID = '1412090993909563534';    
 const WELCOME_CHANNEL_ID = '1406560267214524527';
 const GOODBYE_CHANNEL_ID = '1406559808114393121';
-const AUTO_ROLE_ID = '1406560015925514290'; // ⚠️ THAY BẰNG ID VAI TRÒ "THÀNH VIÊN" CỦA BẠN
+const AUTO_ROLE_ID = '1406560015925514290';
 const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif'
 const CHAT_CHANNEL_ID = '1408709235478368267';
 const SUPPORT_CHANNEL_ID = '1412323492162174988';
+// --- CÁC ID CATEGORY MỚI CHO TICKET ---
+const SUPPORT_TICKET_CATEGORY_ID = '1413009121606631456'; // ⚠️ ID Category cho ticket Hỗ Trợ
+const ADMIN_TICKET_CATEGORY_ID = '1413009227156291634'; // ⚠️ ID Category cho ticket Admin
 
 const commands = [
     // ... (Toàn bộ phần commands của bạn giữ nguyên, không cần thay đổi)
@@ -312,7 +301,6 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates] });
 
-// <<< HÀM GỠ VAI TRÒ TẠM THỜI VÀ KHÔI PHỤC LỊCH HẸN
 async function removeTempRole(userId, guildId, roleId) {
     const guild = await client.guilds.fetch(guildId).catch(() => null);
     if (!guild) return;
@@ -358,14 +346,12 @@ client.once('ready', () => {
         status: 'idle', 
     });
 
-    // <<< KHÔI PHỤC CÁC LỊCH HẸN GỠ ROLE KHI BOT KHỞI ĐỘNG
     restoreTempRoles();
 });
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('feedbackModal_')) {
-            // ... (Phần này giữ nguyên)
             const channelId = interaction.customId.split('_')[1];
             const tieuDe = interaction.fields.getTextInputValue('tieuDeInput');
             const noiDung = interaction.fields.getTextInputValue('noiDungInput');
@@ -390,69 +376,41 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         const customId = interaction.customId;
 
-        if (customId === 'create_ticket') {
-            await interaction.deferReply({ ephemeral: true });
-            
-            // <<< LẤY SỐ ĐẾM TỪ DATABASE
-            let ticketCounter = parseInt(db.prepare(`SELECT value FROM settings WHERE key = ?`).get('ticketCounter').value);
-            
-            const ticketChannelName = `ticket-${ticketCounter}`;
+        if (customId === 'show_ticket_options') {
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('select_ticket_category')
+                .setPlaceholder('Vui lòng chọn một loại hỗ trợ...')
+                .addOptions([
+                    {
+                        label: 'Hỗ trợ Chung',
+                        description: 'Các vấn đề về lỗi, kỹ thuật hoặc cần hướng dẫn.',
+                        value: 'technical_support',
+                        emoji: '🛠️'
+                    },
+                    {
+                        label: 'Liên hệ Admin',
+                        description: 'Báo cáo người dùng, góp ý hoặc các vấn đề khác.',
+                        value: 'admin_contact',
+                        emoji: '👑'
+                    }
+                ]);
 
-            try {
-                const ticketChannel = await interaction.guild.channels.create({
-                    name: ticketChannelName,
-                    type: ChannelType.GuildText,
-                    parent: TICKET_CATEGORY_ID,
-                    permissionOverwrites: [
-                        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                        { id: SUPPORT_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                    ],
-                });
-                
-                // <<< TĂNG SỐ ĐẾM VÀ CẬP NHẬT VÀO DATABASE
-                ticketCounter++;
-                db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run(ticketCounter.toString(), 'ticketCounter');
+            const row = new ActionRowBuilder().addComponents(selectMenu);
 
-
-                const ticketWelcomeEmbed = new EmbedBuilder()
-                    .setColor('#57F287')
-                    .setTitle('🎟️ Ticket Hỗ Trợ Đã Được Tạo')
-                    .setDescription(`Chào ${interaction.user}, cảm ơn bạn đã liên hệ.\n\nĐội ngũ <@&${SUPPORT_ROLE_ID}> sẽ phản hồi trong thời gian sớm nhất. Vui lòng trình bày chi tiết vấn đề của bạn ở đây.`)
-                    .setTimestamp()
-                    .setFooter({ text: `Ticket được tạo bởi ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() });
-
-                const closeButton = new ButtonBuilder()
-                    .setCustomId('close_ticket')
-                    .setLabel('Đóng Ticket')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🔒');
-                const row = new ActionRowBuilder().addComponents(closeButton);
-
-                await ticketChannel.send({
-                    content: `${interaction.user} <@&${SUPPORT_ROLE_ID}>`,
-                    embeds: [ticketWelcomeEmbed],
-                    components: [row]
-                });
-
-                await interaction.followUp({ content: `Đã tạo ticket của bạn tại ${ticketChannel}.` });
-
-            } catch (error) {
-                console.error("Lỗi khi tạo ticket:", error);
-                await interaction.followUp({ content: 'Đã xảy ra khi tạo ticket. Vui lòng kiểm tra lại ID Category và quyền của bot.' });
-            }
+            await interaction.reply({
+                content: 'Bạn cần hỗ trợ về vấn đề gì?',
+                components: [row],
+                ephemeral: true 
+            });
         }
-        if (customId === 'close_ticket') {
-             // ... (Phần này giữ nguyên)
+        else if (customId === 'close_ticket') {
             if (!interaction.member.roles.cache.has(SUPPORT_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: 'Chỉ đội ngũ hỗ trợ mới có thể đóng ticket.', ephemeral: true });
             }
             await interaction.reply({ content: 'Đang xóa kênh...', ephemeral: true });
             interaction.channel.delete().catch(err => console.error("Không thể xóa kênh ticket:", err));
         }
-
-        if (customId.startsWith('open_feedback_form_')) {
-            // ... (Phần này giữ nguyên)
+        else if (customId.startsWith('open_feedback_form_')) {
             const feedbackChannelId = customId.split('_')[3]; 
             const modal = new ModalBuilder()
                 .setCustomId(`feedbackModal_${feedbackChannelId}`)
@@ -474,8 +432,8 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
 
+        // ... (Toàn bộ các lệnh slash của bạn từ info -> resettickets)
         if (commandName === 'info') {
-             // ... (Các lệnh từ info đến move giữ nguyên)
              await interaction.deferReply();
              const subcommand = interaction.options.getSubcommand();
  
@@ -788,7 +746,6 @@ client.on('interactionCreate', async interaction => {
             const role = interaction.options.getRole('vai_trò');
             const durationStr = interaction.options.getString('thời_hạn');
     
-            // ... (phần kiểm tra quyền giữ nguyên)
             if (!target || !role) {
                 return interaction.followUp({ content: 'Không tìm thấy thành viên hoặc vai trò được chỉ định.' });
             }
@@ -821,11 +778,9 @@ client.on('interactionCreate', async interaction => {
             try {
                 await target.roles.add(role);
 
-                // <<< LƯU LỊCH HẸN VÀO DATABASE
                 const stmt = db.prepare(`INSERT INTO temp_roles (userId, guildId, roleId, expiresAt) VALUES (?, ?, ?, ?)`);
                 stmt.run(target.id, interaction.guild.id, role.id, expiresAt);
                 
-                // <<< TẠO LỊCH HẸN GỠ VAI TRÒ
                 setTimeout(() => removeTempRole(target.id, interaction.guild.id, role.id), durationMs);
 
                 const embed = new EmbedBuilder()
@@ -856,8 +811,6 @@ client.on('interactionCreate', async interaction => {
                 return interaction.followUp({ content: 'Thành viên này không có vai trò đó.' });
             }
     
-            // <<< XÓA LỊCH HẸN KHỎI DATABASE
-            // Không cần xóa setTimeout vì hàm removeTempRole sẽ được gọi trực tiếp và xóa DB
             await removeTempRole(target.id, interaction.guild.id, role.id);
             
             const embed = new EmbedBuilder()
@@ -872,18 +825,25 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             const tieuDe = interaction.options.getString('tieu_de');
             const moTa = interaction.options.getString('mo_ta').replace(/\\n/g, '\n');
-            const content = interaction.options.getString('content'); // <<< LẤY GIÁ TRỊ CONTENT
+            const content = interaction.options.getString('content');
             const hinhAnh = interaction.options.getString('hinh_anh');
             const mauSac = interaction.options.getString('mau_sac');
 
-            const ticketEmbed = new EmbedBuilder().setTitle(tieuDe).setDescription(moTa);
+            const ticketEmbed = new EmbedBuilder()
+                .setTitle(tieuDe)
+                .setDescription(moTa);
+                
             if (mauSac) ticketEmbed.setColor(mauSac);
             if (hinhAnh) ticketEmbed.setImage(hinhAnh);
 
-            const openButton = new ButtonBuilder().setCustomId('create_ticket').setLabel('Mở Ticket').setStyle(ButtonStyle.Success).setEmoji('<:Email37:1412322372790255636>');
+            const openButton = new ButtonBuilder()
+                .setCustomId('show_ticket_options')
+                .setLabel('Mở Ticket')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('📧');
+            
             const row = new ActionRowBuilder().addComponents(openButton);
 
-            // <<< TẠO PAYLOAD VÀ GỬI
             const messagePayload = {
                 embeds: [ticketEmbed],
                 components: [row]
@@ -893,13 +853,13 @@ client.on('interactionCreate', async interaction => {
             }
             await interaction.channel.send(messagePayload);
             
-            await interaction.followUp({ content: 'Đã cài đặt thành công bảng điều khiển ticket.' });
+            await interaction.followUp({ content: 'Đã cài đặt thành công bảng điều khiển ticket với chức năng chọn danh mục.' });
         }
         else if (commandName === 'formsetup') {
             await interaction.deferReply({ ephemeral: true });
             const tieuDe = interaction.options.getString('tieu_de');
             const moTa = interaction.options.getString('mo_ta').replace(/\\n/g, '\n');
-            const content = interaction.options.getString('content'); // <<< LẤY GIÁ TRỊ CONTENT
+            const content = interaction.options.getString('content');
             const hinhAnh = interaction.options.getString('hinh_anh');
             const mauSac = interaction.options.getString('mau_sac');
             const kenhNhanForm = interaction.options.getChannel('kenh_nhan_form');
@@ -912,7 +872,6 @@ client.on('interactionCreate', async interaction => {
             const openFormButton = new ButtonBuilder().setCustomId(`open_feedback_form_${feedbackChannelId}`).setLabel('Hỗ Trợ').setStyle(ButtonStyle.Danger).setEmoji('<:email49:1412322374891602020>');
             const row = new ActionRowBuilder().addComponents(openFormButton);
             
-            // <<< TẠO PAYLOAD VÀ GỬI
             const messagePayload = {
                 embeds: [formEmbed],
                 components: [row]
@@ -926,7 +885,6 @@ client.on('interactionCreate', async interaction => {
         }
 
         else if (commandName === 'warn') {
-             // ... (Phần này giữ nguyên)
              await interaction.deferReply({ ephemeral: true });
     
              const target = interaction.options.getMember('người');
@@ -965,7 +923,7 @@ client.on('interactionCreate', async interaction => {
                      console.error("Lỗi khi gửi DM cảnh cáo:", error);
                      await interaction.followUp({ content: `❌ Không thể gửi tin nhắn riêng cho người dùng này. Họ có thể đã chặn bot hoặc tắt tin nhắn riêng.` });
                  }
-             } else { // destination === 'server'
+             } else {
                  const publicWarnEmbed = new EmbedBuilder()
                      .setColor('Yellow')
                      .setTitle('<:PridecordWarning:1412665674026717207> Thành viên đã bị cảnh cáo')
@@ -984,18 +942,75 @@ client.on('interactionCreate', async interaction => {
             if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: 'Bạn không có quyền sử dụng lệnh này.', ephemeral: true });
             }
-            // <<< RESET TICKET TRONG DATABASE
             db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run('1', 'ticketCounter');
             await interaction.reply({ content: '✅ Đã reset số đếm ticket về lại 1 trong database.', ephemeral: true });
         }
     }
-});
 
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === 'select_ticket_category') {
+            await interaction.deferReply({ ephemeral: true });
+
+            const selectedValue = interaction.values[0];
+            let categoryId;
+            let ticketType;
+            let welcomeMessage;
+
+            switch (selectedValue) {
+                case 'technical_support':
+                    categoryId = SUPPORT_TICKET_CATEGORY_ID;
+                    ticketType = 'ho-tro';
+                    welcomeMessage = `Hỗ trợ bạn về vấn đề **Kỹ thuật/Chung**. Vui lòng trình bày chi tiết vấn đề bạn đang gặp phải.`;
+                    break;
+                case 'admin_contact':
+                    categoryId = ADMIN_TICKET_CATEGORY_ID;
+                    ticketType = 'admin';
+                    welcomeMessage = `Hỗ trợ bạn về vấn đề cần **Liên hệ Admin**. Vui lòng cho chúng tôi biết yêu cầu của bạn.`;
+                    break;
+                default:
+                    return interaction.followUp({ content: 'Lựa chọn không hợp lệ.' });
+            }
+
+            let ticketCounter = parseInt(db.prepare(`SELECT value FROM settings WHERE key = ?`).get('ticketCounter').value);
+            const ticketChannelName = `${ticketType}-${ticketCounter}`;
+
+            try {
+                const ticketChannel = await interaction.guild.channels.create({
+                    name: ticketChannelName,
+                    type: ChannelType.GuildText,
+                    parent: categoryId,
+                    permissionOverwrites: [
+                        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+                        { id: SUPPORT_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
+                    ],
+                });
+
+                ticketCounter++;
+                db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run(ticketCounter.toString(), 'ticketCounter');
+
+                const ticketWelcomeEmbed = new EmbedBuilder()
+                    .setColor('#57F287')
+                    .setTitle(`Ticket ${ticketType.charAt(0).toUpperCase() + ticketType.slice(1)}`)
+                    .setDescription(`Chào ${interaction.user}, cảm ơn bạn đã liên hệ.\n\nĐội ngũ <@&${SUPPORT_ROLE_ID}> sẽ ${welcomeMessage}`)
+                    .setTimestamp();
+                const closeButton = new ButtonBuilder().setCustomId('close_ticket').setLabel('Đóng Ticket').setStyle(ButtonStyle.Danger);
+                const row = new ActionRowBuilder().addComponents(closeButton);
+                await ticketChannel.send({ embeds: [ticketWelcomeEmbed], components: [row] });
+
+                await interaction.followUp({ content: `Đã tạo ticket của bạn tại ${ticketChannel}.` });
+
+            } catch (error) {
+                console.error("Lỗi khi tạo ticket theo danh mục:", error);
+                await interaction.followUp({ content: 'Đã xảy ra lỗi. Vui lòng kiểm tra lại các ID Category đã khai báo và quyền của bot.' });
+            }
+        }
+    }
+});
 
 client.login(process.env.DISCORD_TOKEN);
 
 client.on('guildMemberAdd', async member => {
-    // ... (Phần này giữ nguyên)
     if (member.user.bot) return;
 
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
@@ -1047,7 +1062,6 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('guildMemberRemove', async member => {
-     // ... (Phần này giữ nguyên)
     if (member.partial) {
         try {
             await member.fetch();
@@ -1073,7 +1087,7 @@ client.on('guildMemberRemove', async member => {
             .setTitle(`👋 Một thành viên đã rời đi 👋`)
             .setDescription(`**${member.user.tag}** đã rời khỏi server. Hẹn gặp lại!`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-            .setImage(GOODBYE_GIF_URL) // Sử dụng link ảnh GIF cố định
+            .setImage(GOODBYE_GIF_URL)
             .setTimestamp()
             .setFooter({ text: `Hiện tại server còn lại ${member.guild.memberCount} thành viên.` });
 
