@@ -19,13 +19,13 @@ const db = new Database('/data/data.db');
 
 // --- CẤU HÌNH CHO AUTO-MOD ---
 // ⚠️ THAY ID KÊNH LOG CỦA BẠN VÀO ĐÂY
-const MOD_LOG_CHANNEL_ID = 'YOUR_MOD_LOG_CHANNEL_ID'; // <--- ⚠️ THAY ID KÊNH LOG CỦA BẠN VÀO ĐÂY
+const MOD_LOG_CHANNEL_ID = '1413071939395653722'; // <--- ⚠️ THAY ID KÊNH LOG CỦA BẠN VÀO ĐÂY
 
 // ⚠️ THÊM CÁC TỪ BẠN MUỐN CẤM VÀO ĐÂY (viết chữ thường)
-const FORBIDDEN_WORDS = ['từ cấm 1', 'từ cấm 2', 'badword'];
+const FORBIDDEN_WORDS = ['lồn', 'cặc', 'badword', 'ngu',];
 
 // ⚠️ CẤU HÌNH THỜI GIAN TIMEOUT CHO LẦN VI PHẠM THỨ 2
-const TIMEOUT_DURATION = '10m'; // Ví dụ: 10 phút. Bạn có thể đổi thành '1h', '6h'...
+const TIMEOUT_DURATION = '60m'; // Ví dụ: 10 phút. Bạn có thể đổi thành '1h', '6h'...
 
 function setupDatabase() {
     db.exec(`
@@ -1144,7 +1144,7 @@ client.on('messageCreate', async message => {
                      console.log(`Không thể DM cảnh cáo cho ${message.author.tag}`);
                 }
 
-                const warningMessage = await message.channel.send(`${message.author}, bạn đã bị cảnh cáo lần 1 vì sử dụng ngôn từ không phù hợp. Vui lòng kiểm tra tin nhắn riêng để biết chi tiết.`);
+                const warningMessage = await message.channel.send(`<:PridecordWarning:1412665674026717207> ${message.author}, đây là cảnh cáo đầu tiên của bạn. Hãy đọc lại luật trước khi chat tiếp!`);
                 setTimeout(() => warningMessage.delete().catch(console.error), 10000); // Tự xóa sau 10s
 
                 if (logChannel) {
@@ -1171,8 +1171,8 @@ client.on('messageCreate', async message => {
 
                         const dmEmbed = new EmbedBuilder()
                             .setColor('Orange')
-                            .setTitle(`Bạn đã bị Timeout tại ${message.guild.name}`)
-                            .setDescription(`Bạn đã bị timeout **${TIMEOUT_DURATION}** vì tái phạm.\n**Lý do:** ${reason}\n\n⚠️ **Đây là cảnh cáo lần 2. Vi phạm lần nữa sẽ dẫn đến bị Ban vĩnh viễn.**`)
+                            .setTitle(`<a:Purp_Alert:1413004990037098547> Thông báo xử phạt tại server ${message.guild.name} <a:Purp_Alert:1413004990037098547>`)
+                            .setDescription(`<:PridecordWarning:1412665674026717207> Do tái phạm nội quy, bạn đã bị tạm thời cấm chat trong **${TIMEOUT_DURATION}**.\n\nLý do: \`${reason}\`\n\n**LƯU Ý:** Vi phạm thêm một lần nữa sẽ dẫn đến hình phạt cao nhất là **BAN VĨNH VIỄN**. <:PridecordWarning:1412665674026717207>`)
                             .setTimestamp();
                         await message.author.send({ embeds: [dmEmbed] });
 
@@ -1203,7 +1203,7 @@ client.on('messageCreate', async message => {
                      if (message.member.bannable) {
                         const dmEmbed = new EmbedBuilder()
                             .setColor('Red')
-                            .setTitle(`Bạn đã bị Ban vĩnh viễn khỏi ${message.guild.name}`)
+                            .setTitle(`<a:Purp_Alert:1413004990037098547> Bạn đã bị Ban vĩnh viễn khỏi ${message.guild.name}` <a:Purp_Alert:1413004990037098547>)
                             .setDescription(`Bạn đã bị ban vĩnh viễn vì vi phạm lần thứ 3.\n**Lý do:** ${reason}`)
                             .setTimestamp();
                         await message.author.send({ embeds: [dmEmbed] }).catch(() => console.log(`Không thể DM thông báo ban cho ${message.author.tag}`));
