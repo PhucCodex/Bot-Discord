@@ -380,7 +380,7 @@ client.on('interactionCreate', async interaction => {
         if (customId === 'show_ticket_options') {
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('select_ticket_category')
-                .setPlaceholder('Vui lòng chọn một loại hỗ trợ...')
+                .setPlaceholder('Vui lòng chọn một loại hỗ trợ !')
                 .addOptions([
                     {
                         label: 'Hỗ trợ Chung',
@@ -399,7 +399,7 @@ client.on('interactionCreate', async interaction => {
             const row = new ActionRowBuilder().addComponents(selectMenu);
 
             await interaction.reply({
-                content: 'Bạn cần hỗ trợ về vấn đề gì?',
+                content: '**Bạn cần hỗ trợ về vấn đề gì? Hãy chọn ở danh sách dưới nhé ! <:PridecordWarning:1412665674026717207> **',
                 components: [row],
                 ephemeral: true 
             });
@@ -1014,7 +1014,7 @@ client.on('interactionCreate', async interaction => {
                     .setTitle(`Ticket ${ticketType.charAt(0).toUpperCase() + ticketType.slice(1)}`)
                     .setDescription(`Chào ${interaction.user}, cảm ơn bạn đã liên hệ.\n\nĐội ngũ <@&${SUPPORT_ROLE_ID}> sẽ ${welcomeMessage}`)
                     .setTimestamp();
-                const closeButton = new ButtonBuilder().setCustomId('close_ticket').setLabel('Đóng Ticket').setStyle(ButtonStyle.Danger);
+                const closeButton = new ButtonBuilder().setCustomId('close_ticket').setLabel('Đóng Ticket').setStyle(ButtonStyle.Danger).setEmoji('<:close51:1413054667021352960>');
                 const row = new ActionRowBuilder().addComponents(closeButton);
                 await ticketChannel.send({ content: ticketContent, embeds: [ticketWelcomeEmbed], components: [row] });
 
