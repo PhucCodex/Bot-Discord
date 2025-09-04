@@ -249,6 +249,7 @@ const commands = [
         .addStringOption(option => option.setName('mo_ta').setDescription('Nội dung mô tả chi tiết. Dùng \\n để xuống dòng.').setRequired(true))
         .addStringOption(option => option.setName('content').setDescription('Nội dung tin nhắn riêng bên trên embed (để ping role, thêm emoji...).'))
         .addStringOption(option => option.setName('hinh_anh').setDescription('URL hình ảnh (ảnh bìa) của bảng điều khiển.'))
+        .addStringOption(option => option.setName('anh_banner').setDescription('URL của hình ảnh lớn hiển thị phía trên embed.'))
         .addStringOption(option => option.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).'))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
@@ -827,7 +828,19 @@ client.on('interactionCreate', async interaction => {
             const moTa = interaction.options.getString('mo_ta').replace(/\\n/g, '\n');
             const content = interaction.options.getString('content');
             const hinhAnh = interaction.options.getString('hinh_anh');
+            const bannerUrl = interaction.options.getString('ảnh_banner')
             const mauSac = interaction.options.getString('mau_sac');
+
+            if (bannerUrl) {
+                try {
+                    await interaction.channel.send({
+                        files: [bannerUrl]
+                    });
+                } catch (error) {
+                    console.error("Lỗi khi gửi ảnh banner", error);
+                    await interaction.followUp({ content: '⚠️ Lỗi: Không thể gửi ảnh banner. Vui lòng kiểm tra lại URL.' });
+                }
+            }
 
             const ticketEmbed = new EmbedBuilder()
                 .setTitle(tieuDe)
@@ -852,8 +865,12 @@ client.on('interactionCreate', async interaction => {
                 messagePayload.content = content;
             }
             await interaction.channel.send(messagePayload);
-            
-            await interaction.followUp({ content: 'Đã cài đặt thành công bảng điều khiển ticket với chức năng chọn danh mục.' });
+
+            if (!bannerUrl){
+                await interaction.followUp({ content: 'Đã cài đặt thành công bảng điều khiển ticket với chức năng chọn danh mục.' });
+            } else {
+                await interaction.editReply({ content: 'Đã cài đặt thành công bảng điều khiển ticket và banner.' });
+            }
         }
         else if (commandName === 'formsetup') {
             await interaction.deferReply({ ephemeral: true });
