@@ -467,15 +467,18 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('applysetup')
-        .setDescription('Cài đặt bảng đăng ký tuyển dụng Staff.')
+        .setDescription('Cài đặt bảng đăng ký tuyển dụng Staff chuyên nghiệp.')
         .addChannelOption(option => 
             option.setName('kênh_nhận_đơn')
                 .setDescription('Kênh riêng tư để bot gửi đơn đăng ký của thành viên vào.')
                 .setRequired(true)
                 .addChannelTypes(ChannelType.GuildText))
-        .addStringOption(option => option.setName('tiêu_đề').setDescription('Tiêu đề của bảng thông báo tuyển dụng.').setRequired(true))
-        .addStringOption(option => option.setName('mô_tả').setDescription('Nội dung chi tiết của thông báo. Dùng \\n để xuống dòng.').setRequired(true))
-        .addStringOption(option => option.setName('tiêu_đề_menu').setDescription('Chữ hiển thị trên menu lựa chọn (ví dụ: Đăng kí Staff).').setRequired(true))
+        .addStringOption(option => option.setName('tiêu_đề').setDescription('Tiêu đề chính của embed.').setRequired(true))
+        .addStringOption(option => option.setName('mô_tả').setDescription('Nội dung chi tiết của embed. Dùng \\n để xuống dòng.').setRequired(true))
+        .addStringOption(option => option.setName('menu_placeholder').setDescription('Chữ mờ trong menu khi chưa chọn (ví dụ: Make a selection).').setRequired(true))
+        .addStringOption(option => option.setName('menu_label').setDescription('Chữ trong tùy chọn của menu (ví dụ: Đăng kí Staff).').setRequired(true))
+        .addStringOption(option => option.setName('content').setDescription('Nội dung chữ bên trên embed (dùng để ping role...).'))
+        .addStringOption(option => option.setName('image_url').setDescription('URL của ảnh lớn (banner) hiển thị trong embed.'))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
 ].map(command => command.toJSON());
@@ -687,7 +690,7 @@ client.on('interactionCreate', async interaction => {
                 await interaction.reply({ content: 'Đã có lỗi xảy ra. Có thể tôi không có quyền gửi tin nhắn vào kênh đó.', ephemeral: true });
             }
         }
-        
+
         if (interaction.customId.startsWith('staff_application_modal_')) {
             const receivingChannelId = interaction.customId.split('_')[3];
             
@@ -856,19 +859,27 @@ client.on('interactionCreate', async interaction => {
             const targetChannel = interaction.options.getChannel('kênh_nhận_đơn');
             const title = interaction.options.getString('tiêu_đề');
             const description = interaction.options.getString('mô_tả').replace(/\\n/g, '\n');
-            const menuPlaceholder = interaction.options.getString('tiêu_đề_menu');
+            const menuPlaceholder = interaction.options.getString('menu_placeholder');
+            const menuLabel = interaction.options.getString('menu_label');
+            const content = interaction.options.getString('content'); // Lấy content
+            const imageUrl = interaction.options.getString('image_url'); // Lấy URL ảnh
 
             const applyEmbed = new EmbedBuilder()
                 .setColor('Blue')
                 .setTitle(title)
                 .setDescription(description);
 
+            // Chỉ thêm ảnh nếu người dùng có cung cấp URL
+            if (imageUrl) {
+                applyEmbed.setImage(imageUrl);
+            }
+
             const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId(`staff_apply_menu_${targetChannel.id}`) // Truyền ID kênh nhận đơn vào customId
-                .setPlaceholder(menuPlaceholder)
+                .setCustomId(`staff_apply_menu_${targetChannel.id}`)
+                .setPlaceholder(menuPlaceholder) // Sử dụng placeholder mới
                 .addOptions([
                     {
-                        label: menuPlaceholder,
+                        label: menuLabel, // Sử dụng label mới
                         description: 'Chọn mục này để bắt đầu quá trình đăng ký.',
                         value: 'start_application'
                     }
@@ -876,10 +887,56 @@ client.on('interactionCreate', async interaction => {
             
             const row = new ActionRowBuilder().addComponents(selectMenu);
 
-            await interaction.channel.send({ embeds: [applyEmbed], components: [row] });
+            // Tạo payload để gửi tin nhắn
+            const messagePayload = {
+                embeds: [applyEmbed],
+                components: [row]
+            };
+
+            // Chỉ thêm content nếu người dùng có cung cấp
+            if (content) {
+                messagePayload.content = content;
+            }
+
+            await interaction.channel.send(messagePayload);
             await interaction.followUp({ content: `✅ Đã tạo bảng tuyển dụng thành công!` });
         }
         
+else if (customId.startsWith('start_application_form_')) {
+            const receivingChannelId = customId.split('_')[3];
+            
+            const modal = new ModalBuilder()
+                .setCustomId(`staff_application_modal_${receivingChannelId}`)
+                .setTitle('Đơn Đăng Ký Staff');
+
+            // --- Các câu hỏi trong form (giữ nguyên) ---
+            const question1 = new TextInputBuilder()
+                .setCustomId('apply_q1')
+                .setLabel("Tên trong game/Tên gọi của bạn là gì?")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            const question2 = new TextInputBuilder()
+                .setCustomId('apply_q2')
+                .setLabel("Bạn bao nhiêu tuổi?")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            const question3 = new TextInputBuilder()
+                .setCustomId('apply_q3')
+                .setLabel("Tại sao bạn muốn ứng tuyển vào vị trí Staff?")
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+            
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(question1),
+                new ActionRowBuilder().addComponents(question2),
+                new ActionRowBuilder().addComponents(question3)
+            );
+
+            await interaction.showModal(modal);
+        }
+
         // --- XỬ LÝ CÁC LỆNH NHẠC ---
         const musicCommands = ['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying', 'loop'];
         if (musicCommands.includes(commandName)) {
@@ -1899,37 +1956,36 @@ client.on('interactionCreate', async interaction => {
 
         else if (customId.startsWith('staff_apply_menu_')) {
             const receivingChannelId = customId.split('_')[3];
-            
-            const modal = new ModalBuilder()
-                .setCustomId(`staff_application_modal_${receivingChannelId}`) // Truyền ID kênh vào modal
-                .setTitle('Đơn Đăng Ký Staff');
 
-            // --- BẠN CÓ THỂ TÙY CHỈNH CÁC CÂU HỎI Ở ĐÂY ---
-            const question1 = new TextInputBuilder()
-                .setCustomId('apply_q1')
-                .setLabel("Tên trong game/Tên gọi của bạn là gì?")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
+            // Tạo nút bấm để đặt trong DM
+            const startButton = new ButtonBuilder()
+                .setCustomId(`start_application_form_${receivingChannelId}`) // Custom ID mới
+                .setLabel('Bắt đầu điền Form')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('📝');
 
-            const question2 = new TextInputBuilder()
-                .setCustomId('apply_q2')
-                .setLabel("Bạn bao nhiêu tuổi?")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
+            const row = new ActionRowBuilder().addComponents(startButton);
 
-            const question3 = new TextInputBuilder()
-                .setCustomId('apply_q3')
-                .setLabel("Tại sao bạn muốn ứng tuyển vào vị trí Staff?")
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-            
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(question1),
-                new ActionRowBuilder().addComponents(question2),
-                new ActionRowBuilder().addComponents(question3)
-            );
+            try {
+                // Gửi tin nhắn vào DM của người dùng
+                await interaction.user.send({
+                    content: `Chào bạn, để bắt đầu quá trình đăng ký Staff tại server **${interaction.guild.name}**, vui lòng bấm nút bên dưới.`,
+                    components: [row]
+                });
 
-            await interaction.showModal(modal);
+                // Phản hồi ẩn để menu có thể được bấm lại
+                await interaction.reply({ 
+                    content: 'Mình đã gửi hướng dẫn đăng ký vào tin nhắn riêng (DM) của bạn. Hãy kiểm tra nhé!', 
+                    ephemeral: true 
+                });
+
+            } catch (error) {
+                console.error("Lỗi khi gửi DM:", error);
+                await interaction.reply({
+                    content: 'Lỗi: Mình không thể gửi tin nhắn riêng cho bạn. Vui lòng kiểm tra cài đặt quyền riêng tư và thử lại.',
+                    ephemeral: true
+                });
+            }
         }
         return;
     }
