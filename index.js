@@ -480,6 +480,105 @@ const commands = [
                         .setRequired(false))
         ),
 
+        new SlashCommandBuilder()
+    .setName('voice')
+    .setDescription('Quản lý kênh thoại tạm thời của bạn.')
+    .setDMPermission(false)
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('help')
+            .setDescription('Hiển thị danh sách các lệnh quản lý kênh thoại.')
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('name')
+            .setDescription('Đổi tên kênh thoại của bạn.')
+            .addStringOption(option => 
+                option.setName('tên_mới')
+                    .setDescription('Tên bạn muốn đặt cho kênh.')
+                    .setRequired(true))
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('limit')
+            .setDescription('Đặt giới hạn số lượng người dùng trong kênh.')
+            .addIntegerOption(option =>
+                option.setName('số_lượng')
+                    .setDescription('Số người tối đa (nhập 0 để không giới hạn).')
+                    .setRequired(true)
+                    .setMinValue(0)
+                    .setMaxValue(99))
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('lock')
+            .setDescription('Khóa kênh, không cho người lạ vào.')
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('unlock')
+            .setDescription('Mở khóa kênh, cho phép mọi người vào.')
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('kick')
+            .setDescription('Đuổi một thành viên ra khỏi kênh của bạn.')
+            .addUserOption(option =>
+                option.setName('thành_viên')
+                    .setDescription('Người bạn muốn đuổi.')
+                    .setRequired(true))
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('ban')
+            .setDescription('Cấm một thành viên vào kênh của bạn.')
+            .addUserOption(option =>
+                option.setName('thành_viên')
+                    .setDescription('Người bạn muốn cấm.')
+                    .setRequired(true))
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('unban')
+            .setDescription('Gỡ cấm một thành viên vào kênh của bạn.')
+            .addUserOption(option =>
+                option.setName('thành_viên')
+                    .setDescription('Người bạn muốn gỡ cấm.')
+                    .setRequired(true))
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('trust')
+            .setDescription('Cho phép một thành viên vào kênh ngay cả khi đã khóa.')
+            .addUserOption(option =>
+                option.setName('thành_viên')
+                    .setDescription('Người bạn muốn tin tưởng.')
+                    .setRequired(true))
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('untrust')
+            .setDescription('Xóa quyền tin tưởng của một thành viên.')
+            .addUserOption(option =>
+                option.setName('thành_viên')
+                    .setDescription('Người bạn muốn xóa quyền tin tưởng.')
+                    .setRequired(true))
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('transfer')
+            .setDescription('Chuyển giao quyền sở hữu kênh cho người khác.')
+            .addUserOption(option =>
+                option.setName('thành_viên')
+                    .setDescription('Người sẽ trở thành chủ kênh mới.')
+                    .setRequired(true))
+    )
+    .addSubcommand(subcommand =>
+        subcommand
+            .setName('claim')
+            .setDescription('Nhận lại quyền sở hữu kênh nếu chủ kênh đã rời đi.')
+    ),
+
 ].map(command => {
     // Gán quyền mặc định cho các lệnh chưa có
     if (!command.default_member_permissions && command.name !== 'level' && command.name !== 'daily' && command.name !== 'leaderboard') {
@@ -1478,6 +1577,139 @@ client.on('interactionCreate', async interaction => {
                 }
             }
     }
+
+    if (interaction.isChatInputCommand() && interaction.commandName === 'voice') {
+    const { member, guild, options } = interaction;
+    const subcommand = options.getSubcommand();
+    const voiceChannel = member.voice.channel;
+
+    // Các lệnh không yêu cầu phải ở trong kênh thoại
+    if (subcommand === 'help') {
+        const helpEmbed = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle('📜 Danh sách lệnh quản lý kênh thoại /voice')
+            .setDescription('Sử dụng các lệnh sau để toàn quyền quản lý kênh thoại tạm thời của bạn.')
+            .addFields(
+                { name: '`/voice name [tên]`', value: 'Đổi tên kênh.', inline: true },
+                { name: '`/voice limit [số]`', value: 'Đặt giới hạn người dùng.', inline: true },
+                { name: '`/voice lock` / `unlock`', value: 'Khóa hoặc mở khóa kênh.', inline: true },
+                { name: '`/voice kick [thành_viên]`', value: 'Đuổi ai đó khỏi kênh.', inline: true },
+                { name: '`/voice ban [thành_viên]`', value: 'Cấm ai đó vào kênh.', inline: true },
+                { name: '`/voice unban [thành_viên]`', value: 'Gỡ cấm cho người dùng.', inline: true },
+                { name: '`/voice trust [thành_viên]`', value: 'Cho phép người dùng vào kênh khi khóa.', inline: true },
+                { name: '`/voice untrust [thành_viên]`', value: 'Gỡ quyền tin tưởng.', inline: true },
+                { name: '`/voice transfer [thành_viên]`', value: 'Chuyển quyền sở hữu kênh.', inline: true },
+                { name: '`/voice claim`', value: 'Nhận quyền sở hữu nếu chủ kênh đã thoát.', inline: false }
+            )
+            .setTimestamp();
+        return interaction.reply({ embeds: [helpEmbed], ephemeral: true });
+    }
+
+    // Kiểm tra chung cho các lệnh còn lại
+    if (!voiceChannel) {
+        return interaction.reply({ content: '❌ Bạn phải đang ở trong một kênh thoại để sử dụng lệnh này.', ephemeral: true });
+    }
+    const tempChannelInfo = db.prepare('SELECT * FROM tempvoice_channels WHERE channelId = ?').get(voiceChannel.id);
+    if (!tempChannelInfo) {
+        return interaction.reply({ content: '❌ Kênh của bạn không phải là kênh thoại tạm thời.', ephemeral: true });
+    }
+
+    // Kiểm tra quyền sở hữu (trừ lệnh claim)
+    if (tempChannelInfo.ownerId !== member.id && subcommand !== 'claim') {
+        return interaction.reply({ content: '❌ Chỉ chủ kênh mới có thể sử dụng lệnh này.', ephemeral: true });
+    }
+    
+    // Xử lý từng lệnh con
+    switch (subcommand) {
+        case 'name': {
+            const newName = options.getString('tên_mới');
+            await voiceChannel.setName(newName);
+            await interaction.reply({ content: `✅ Đã đổi tên kênh thành **${newName}**.`, ephemeral: true });
+            break;
+        }
+        case 'limit': {
+            const newLimit = options.getInteger('số_lượng');
+            await voiceChannel.setUserLimit(newLimit);
+            await interaction.reply({ content: `✅ Đã đặt giới hạn thành viên là **${newLimit === 0 ? 'Không giới hạn' : newLimit}**.`, ephemeral: true });
+            break;
+        }
+        case 'lock': {
+            await voiceChannel.permissionOverwrites.edit(guild.id, { Connect: false });
+            await interaction.reply({ content: '🔒 Kênh đã được khóa.', ephemeral: true });
+            break;
+        }
+        case 'unlock': {
+            await voiceChannel.permissionOverwrites.edit(guild.id, { Connect: null });
+            await interaction.reply({ content: '🔓 Kênh đã được mở khóa.', ephemeral: true });
+            break;
+        }
+        case 'kick': {
+            const targetMember = options.getMember('thành_viên');
+            if (!targetMember || targetMember.voice.channelId !== voiceChannel.id) {
+                return interaction.reply({ content: '❌ Người này không ở trong kênh của bạn.', ephemeral: true });
+            }
+            await targetMember.voice.disconnect(`Bị đuổi bởi chủ kênh ${member.displayName}`);
+            await interaction.reply({ content: `✅ Đã đuổi **${targetMember.displayName}** ra khỏi kênh.`, ephemeral: true });
+            break;
+        }
+        case 'ban': {
+            const targetUser = options.getUser('thành_viên');
+            const targetMember = options.getMember('thành_viên');
+            await voiceChannel.permissionOverwrites.edit(targetUser.id, { Connect: false });
+            if (targetMember && targetMember.voice.channelId === voiceChannel.id) {
+                await targetMember.voice.disconnect('Bị cấm bởi chủ kênh');
+            }
+            await interaction.reply({ content: `🚫 Đã cấm **${targetUser.username}** vào kênh.`, ephemeral: true });
+            break;
+        }
+        case 'unban': {
+            const targetUser = options.getUser('thành_viên');
+            await voiceChannel.permissionOverwrites.delete(targetUser.id);
+            await interaction.reply({ content: `✅ Đã gỡ cấm cho **${targetUser.username}**.`, ephemeral: true });
+            break;
+        }
+        case 'trust': {
+            const targetUser = options.getUser('thành_viên');
+            await voiceChannel.permissionOverwrites.edit(targetUser.id, { Connect: true });
+            await interaction.reply({ content: `👍 **${targetUser.username}** giờ có thể vào kênh của bạn ngay cả khi bị khóa.`, ephemeral: true });
+            break;
+        }
+        case 'untrust': {
+            const targetUser = options.getUser('thành_viên');
+            // Gỡ bỏ quyền cụ thể, không xóa toàn bộ overwrite
+            const currentPerms = voiceChannel.permissionOverwrites.cache.get(targetUser.id);
+            if (currentPerms && currentPerms.allow.has(PermissionFlagsBits.Connect)) {
+                 await voiceChannel.permissionOverwrites.edit(targetUser.id, { Connect: null });
+            }
+            await interaction.reply({ content: `👎 Đã gỡ quyền tin tưởng của **${targetUser.username}**.`, ephemeral: true });
+            break;
+        }
+        case 'transfer': {
+            const newOwner = options.getMember('thành_viên');
+            if (!newOwner || newOwner.user.bot) {
+                return interaction.reply({ content: '❌ Bạn không thể chuyển quyền cho bot hoặc người dùng không hợp lệ.', ephemeral: true });
+            }
+            db.prepare('UPDATE tempvoice_channels SET ownerId = ? WHERE channelId = ?').run(newOwner.id, voiceChannel.id);
+            await voiceChannel.permissionOverwrites.edit(member.id, { ManageChannels: null, MoveMembers: null });
+            await voiceChannel.permissionOverwrites.edit(newOwner.id, { ManageChannels: true, MoveMembers: true });
+            await interaction.reply({ content: `👑 Đã chuyển giao quyền sở hữu kênh cho **${newOwner.displayName}**.`, ephemeral: true });
+            break;
+        }
+        case 'claim': {
+            const ownerMember = await guild.members.fetch(tempChannelInfo.ownerId).catch(() => null);
+            if (ownerMember && ownerMember.voice.channelId === voiceChannel.id) {
+                return interaction.reply({ content: `❌ Không thể nhận quyền khi chủ kênh (${ownerMember.displayName}) vẫn còn trong phòng.`, ephemeral: true });
+            }
+            db.prepare('UPDATE tempvoice_channels SET ownerId = ? WHERE channelId = ?').run(member.id, voiceChannel.id);
+            await voiceChannel.permissionOverwrites.edit(member.id, { ManageChannels: true, MoveMembers: true });
+            if (ownerMember) { // Xóa quyền của chủ cũ nếu họ còn tồn tại trong server
+                await voiceChannel.permissionOverwrites.delete(ownerMember.id).catch(() => {});
+            }
+            await interaction.reply({ content: '👑 Bạn đã nhận lại quyền sở hữu kênh này.', ephemeral: true });
+            break;
+        }
+    }
+}
 
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'select_ticket_category') {
