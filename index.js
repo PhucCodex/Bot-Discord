@@ -913,10 +913,14 @@ client.on('interactionCreate', async interaction => {
             await interaction.followUp({ content: `✅ Đã tạo bảng tuyển dụng thành công!` });
         }
         
-else if (customId.startsWith('start_application_form_')) {
-            const receivingChannelId = customId.split('_')[3];
+        else if (customId.startsWith('start_application_form_')) {
+            // Tách các ID từ customId
+            const ids = customId.split('_');
+            const guildId = ids[3]; 
+            const receivingChannelId = ids[4];
             
             const modal = new ModalBuilder()
+                // customId của modal giờ chỉ cần chứa ID kênh nhận đơn
                 .setCustomId(`staff_application_modal_${receivingChannelId}`)
                 .setTitle('Đơn Đăng Ký Staff');
 
@@ -945,7 +949,16 @@ else if (customId.startsWith('start_application_form_')) {
                 new ActionRowBuilder().addComponents(question3)
             );
 
-            await interaction.showModal(modal);
+            // Phải dùng try-catch ở đây để bắt lỗi nếu có
+            try {
+                await interaction.showModal(modal);
+            } catch (error) {
+                console.error("Lỗi khi hiển thị modal:", error);
+                // Gửi một phản hồi lỗi tới người dùng nếu có thể
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({ content: 'Đã có lỗi xảy ra khi cố gắng mở form. Vui lòng thử lại sau.', ephemeral: true });
+                }
+            }
         }
 
         // --- XỬ LÝ CÁC LỆNH NHẠC ---
@@ -1967,10 +1980,12 @@ else if (customId.startsWith('start_application_form_')) {
 
         else if (customId.startsWith('staff_apply_menu_')) {
             const receivingChannelId = customId.split('_')[3];
+            const guildId = interaction.guild.id; // Lấy ID của server
 
             // Tạo nút bấm để đặt trong DM
             const startButton = new ButtonBuilder()
-                .setCustomId(`start_application_form_${receivingChannelId}`) // Custom ID mới
+                // Truyền cả guildId và channelId vào customId
+                .setCustomId(`start_application_form_${guildId}_${receivingChannelId}`) 
                 .setLabel('Bắt đầu điền Form')
                 .setStyle(ButtonStyle.Primary)
                 .setEmoji('📝');
@@ -1986,7 +2001,7 @@ else if (customId.startsWith('start_application_form_')) {
 
                 // Phản hồi ẩn để menu có thể được bấm lại
                 await interaction.reply({ 
-                    content: 'Bạn kiểm tra tin nhắn riêng nhé / Please check your private messages. ', 
+                    content: 'Mình đã gửi hướng dẫn đăng ký vào tin nhắn riêng (DM) của bạn. Hãy kiểm tra nhé!', 
                     ephemeral: true 
                 });
 
