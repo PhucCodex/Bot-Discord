@@ -1402,60 +1402,81 @@ client.on('interactionCreate', async interaction => {
         
         // --- HỆ THỐNG TEMP VOICE ---
         if (commandName === 'tempvoice') {
-            const subcommand = interaction.options.getSubcommand();
-            if (subcommand === 'setup') {
-                await interaction.deferReply({ ephemeral: true });
-                const creatorChannel = interaction.options.getChannel('create_channel');
-                const category = interaction.options.getChannel('category');
-                const panelChannel = interaction.options.getChannel('control_panel_channel');
+                const subcommand = interaction.options.getSubcommand();
+                if (subcommand === 'setup') {
+                    await interaction.deferReply({ ephemeral: true });
+                    const creatorChannel = interaction.options.getChannel('create_channel');
+                    const category = interaction.options.getChannel('category');
+                    const panelChannel = interaction.options.getChannel('control_panel_channel');
 
-                try {
-                    db.prepare('INSERT OR REPLACE INTO tempvoice_settings (guildId, creatorChannelId, categoryId, panelChannelId) VALUES (?, ?, ?, ?)')
-                      .run(guild.id, creatorChannel.id, category.id, panelChannel.id);
-                } catch(e) {
-                    console.error("Lỗi khi setup tempvoice:", e);
-                    return interaction.followUp({ content: 'Đã xảy ra lỗi với database khi đang cài đặt. Vui lòng kiểm tra console.'});
+                    try {
+                        db.prepare('INSERT OR REPLACE INTO tempvoice_settings (guildId, creatorChannelId, categoryId, panelChannelId) VALUES (?, ?, ?, ?)')
+                        .run(guild.id, creatorChannel.id, category.id, panelChannel.id);
+                    } catch(e) {
+                        console.error("Lỗi khi setup tempvoice:", e);
+                        return interaction.followUp({ content: 'Đã xảy ra lỗi với database khi đang cài đặt. Vui lòng kiểm tra console.'});
+                    }
+
+                    const embed = new EmbedBuilder()
+                        .setColor('#5865F2') // Discord Purple
+                        .setTitle('TempVoice Interface')
+                        .setDescription(
+                            'Giao diện này có thể được sử dụng để quản lý các kênh thoại tạm thời. Nhiều tùy chọn hơn có sẵn với lệnh `/voice commands`.\n\n' +
+                            '## ⚙️ Nhấn các nút bên dưới để sử dụng giao diện'
+                        )
+                        .addFields(
+                            { name: '✏️ Tên', value: 'Đổi tên kênh thoại của bạn.', inline: true },
+                            { name: '👥 Giới Hạn', value: 'Đặt giới hạn người dùng cho kênh.', inline: true },
+                            { name: '🛡️ Riêng Tư', value: 'Khóa/mở khóa kênh cho công khai.', inline: true },
+                            { name: '🕒 Phong Đợi', value: 'Đặt thời gian chờ AFK cho kênh.', inline: true },
+                            { name: '#️⃣ Chủ Đề', value: 'Thêm chủ đề cho kênh thoại.', inline: true },
+                            { name: '\u200b', value: '\u200b', inline: false }, // Dòng trống để tạo khoảng cách
+                            { name: '✅ Tin Cậy', value: 'Cấp quyền truy cập cho người cụ thể.', inline: true },
+                            { name: '❌ Bỏ Tin Cậy', value: 'Xóa quyền truy cập của người cụ thể.', inline: true },
+                            { name: '📲 Mời', value: 'Tạo lời mời vào kênh.', inline: true },
+                            { name: '📞 Đá', value: 'Đuổi người dùng ra khỏi kênh.', inline: true },
+                            { name: '🌍 Khu Vực', value: 'Thay đổi khu vực kênh (Tính năng này đang lỗi hoặc không khả dụng).', inline: true },
+                            { name: '\u200b', value: '\u200b', inline: false }, // Dòng trống để tạo khoảng cách
+                            { name: '🚫 Chặn', value: 'Cấm người dùng vào kênh của bạn.', inline: true },
+                            { name: '🔰 Bỏ Chặn', value: 'Hủy cấm người dùng vào kênh.', inline: true },
+                            { name: '👑 Lấy Quyền', value: 'Lấy lại quyền sở hữu kênh.', inline: true },
+                            { name: '🔀 Chuyển Giao', value: 'Chuyển quyền sở hữu kênh cho người khác.', inline: true },
+                            { name: '🗑️ Xóa', value: 'Xóa kênh thoại của bạn.', inline: true }
+                        )
+                        .setTimestamp();
+                    
+                    // Hàng nút 1 (Thiết lập kênh)
+                    const row1 = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder().setCustomId('tv_rename').setEmoji('✏️').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_limit').setEmoji('👥').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_privacy').setEmoji('🛡️').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_afk').setEmoji('🕒').setStyle(ButtonStyle.Secondary), // Nút mới cho AFK Timeout
+                            new ButtonBuilder().setCustomId('tv_topic').setEmoji('#️⃣').setStyle(ButtonStyle.Secondary),
+                        );
+                    // Hàng nút 2 (Quyền truy cập và Mời/Đá)
+                    const row2 = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder().setCustomId('tv_trust').setEmoji('✅').setStyle(ButtonStyle.Success),
+                            new ButtonBuilder().setCustomId('tv_untrust').setEmoji('❌').setStyle(ButtonStyle.Danger),
+                            new ButtonBuilder().setCustomId('tv_invite').setEmoji('📲').setStyle(ButtonStyle.Primary),
+                            new ButtonBuilder().setCustomId('tv_kick').setEmoji('📞').setStyle(ButtonStyle.Danger),
+                            new ButtonBuilder().setCustomId('tv_region').setEmoji('🌍').setStyle(ButtonStyle.Secondary).setDisabled(true), // Giữ nút này disabled cho đến khi có cách xử lý tốt hơn
+                        );
+                    // Hàng nút 3 (Ban, Claim, Transfer, Delete)
+                    const row3 = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder().setCustomId('tv_ban').setEmoji('🚫').setStyle(ButtonStyle.Danger),
+                            new ButtonBuilder().setCustomId('tv_unban').setEmoji('🔰').setStyle(ButtonStyle.Success),
+                            new ButtonBuilder().setCustomId('tv_claim').setEmoji('👑').setStyle(ButtonStyle.Primary),
+                            new ButtonBuilder().setCustomId('tv_transfer').setEmoji('🔀').setStyle(ButtonStyle.Primary),
+                            new ButtonBuilder().setCustomId('tv_delete').setEmoji('🗑️').setStyle(ButtonStyle.Danger),
+                        );
+
+                    await panelChannel.send({ embeds: [embed], components: [row1, row2, row3] });
+                    await interaction.followUp({ content: `✅ Đã cài đặt thành công hệ thống Temp Voice! Bảng điều khiển đã được gửi tới ${panelChannel}.` });
                 }
-
-
-                const embed = new EmbedBuilder()
-                    .setColor('Purple')
-                    .setTitle('TempVoice Interface')
-                    .setDescription('Giao diện này có thể được sử dụng để quản lý các kênh thoại tạm thời.\n\nNhấn các nút bên dưới để sử dụng giao diện');
-                
-                // Hàng nút 1
-                const row1 = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder().setCustomId('tv_rename').setEmoji('✏️').setLabel('Tên').setStyle(ButtonStyle.Secondary),
-                        new ButtonBuilder().setCustomId('tv_limit').setEmoji('👥').setLabel('Giới Hạn').setStyle(ButtonStyle.Secondary),
-                        new ButtonBuilder().setCustomId('tv_privacy').setEmoji('🛡️').setLabel('Riêng Tư').setStyle(ButtonStyle.Secondary),
-                        new ButtonBuilder().setCustomId('tv_hide').setEmoji('👻').setLabel('Ẩn/Hiện').setStyle(ButtonStyle.Secondary),
-                        new ButtonBuilder().setCustomId('tv_topic').setEmoji('#️⃣').setLabel('Chủ Đề').setStyle(ButtonStyle.Secondary),
-                    );
-                // Hàng nút 2
-                const row2 = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder().setCustomId('tv_trust').setEmoji('✅').setLabel('Tin Cậy').setStyle(ButtonStyle.Success),
-                        new ButtonBuilder().setCustomId('tv_untrust').setEmoji('❌').setLabel('Bỏ Tin Cậy').setStyle(ButtonStyle.Danger),
-                        new ButtonBuilder().setCustomId('tv_invite').setEmoji('📲').setLabel('Mời').setStyle(ButtonStyle.Primary),
-                        new ButtonBuilder().setCustomId('tv_kick').setEmoji('👋').setLabel('Đá').setStyle(ButtonStyle.Danger),
-                        // Nút Region bị vô hiệu hóa vì API Discord không còn hỗ trợ
-                        new ButtonBuilder().setCustomId('tv_region').setEmoji('🌍').setLabel('Khu Vực').setStyle(ButtonStyle.Secondary).setDisabled(true),
-                    );
-                // Hàng nút 3
-                const row3 = new ActionRowBuilder()
-                    .addComponents(
-                         new ButtonBuilder().setCustomId('tv_ban').setEmoji('🚫').setLabel('Chặn').setStyle(ButtonStyle.Danger),
-                         new ButtonBuilder().setCustomId('tv_unban').setEmoji('🔰').setLabel('Bỏ Chặn').setStyle(ButtonStyle.Success),
-                         new ButtonBuilder().setCustomId('tv_claim').setEmoji('👑').setLabel('Lấy Quyền').setStyle(ButtonStyle.Primary),
-                         new ButtonBuilder().setCustomId('tv_transfer').setEmoji('🔀').setLabel('Chuyển Giao').setStyle(ButtonStyle.Primary),
-                         new ButtonBuilder().setCustomId('tv_delete').setEmoji('🗑️').setLabel('Xóa').setStyle(ButtonStyle.Danger),
-                    );
-
-                await panelChannel.send({ embeds: [embed], components: [row1, row2, row3] });
-                await interaction.followUp({ content: `✅ Đã cài đặt thành công hệ thống Temp Voice! Bảng điều khiển đã được gửi tới ${panelChannel}.` });
             }
-        }
     }
 
     if (interaction.isStringSelectMenu()) {
