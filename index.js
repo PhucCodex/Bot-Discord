@@ -798,6 +798,55 @@ client.on('interactionCreate', async interaction => {
             modal.addComponents(firstActionRow, secondActionRow, thirdActionRow);
             await interaction.showModal(modal);
         }
+
+        else if (customId.startsWith('start_application_form_')) {
+            // Tách các ID từ customId
+            const ids = customId.split('_');
+            const guildId = ids[3]; 
+            const receivingChannelId = ids[4];
+            
+            const modal = new ModalBuilder()
+                // customId của modal giờ chỉ cần chứa ID kênh nhận đơn
+                .setCustomId(`staff_application_modal_${receivingChannelId}`)
+                .setTitle('Đơn Đăng Ký Staff');
+
+            // --- Các câu hỏi trong form (giữ nguyên) ---
+            const question1 = new TextInputBuilder()
+                .setCustomId('apply_q1')
+                .setLabel("Tên trong game/Tên gọi của bạn là gì?")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            const question2 = new TextInputBuilder()
+                .setCustomId('apply_q2')
+                .setLabel("Bạn bao nhiêu tuổi?")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            const question3 = new TextInputBuilder()
+                .setCustomId('apply_q3')
+                .setLabel("Tại sao bạn muốn ứng tuyển vào vị trí Staff?")
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+            
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(question1),
+                new ActionRowBuilder().addComponents(question2),
+                new ActionRowBuilder().addComponents(question3)
+            );
+
+            // Phải dùng try-catch ở đây để bắt lỗi nếu có
+            try {
+                await interaction.showModal(modal);
+            } catch (error) {
+                console.error("Lỗi khi hiển thị modal:", error);
+                // Gửi một phản hồi lỗi tới người dùng nếu có thể
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({ content: 'Đã có lỗi xảy ra khi cố gắng mở form. Vui lòng thử lại sau.', ephemeral: true });
+                }
+            }
+        }
+        
     }
     
     if (interaction.isChatInputCommand()) {
@@ -911,54 +960,6 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.channel.send(messagePayload);
             await interaction.followUp({ content: `✅ Đã tạo bảng tuyển dụng thành công!` });
-        }
-        
-        else if (customId.startsWith('start_application_form_')) {
-            // Tách các ID từ customId
-            const ids = customId.split('_');
-            const guildId = ids[3]; 
-            const receivingChannelId = ids[4];
-            
-            const modal = new ModalBuilder()
-                // customId của modal giờ chỉ cần chứa ID kênh nhận đơn
-                .setCustomId(`staff_application_modal_${receivingChannelId}`)
-                .setTitle('Đơn Đăng Ký Staff');
-
-            // --- Các câu hỏi trong form (giữ nguyên) ---
-            const question1 = new TextInputBuilder()
-                .setCustomId('apply_q1')
-                .setLabel("Tên trong game/Tên gọi của bạn là gì?")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
-
-            const question2 = new TextInputBuilder()
-                .setCustomId('apply_q2')
-                .setLabel("Bạn bao nhiêu tuổi?")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
-
-            const question3 = new TextInputBuilder()
-                .setCustomId('apply_q3')
-                .setLabel("Tại sao bạn muốn ứng tuyển vào vị trí Staff?")
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-            
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(question1),
-                new ActionRowBuilder().addComponents(question2),
-                new ActionRowBuilder().addComponents(question3)
-            );
-
-            // Phải dùng try-catch ở đây để bắt lỗi nếu có
-            try {
-                await interaction.showModal(modal);
-            } catch (error) {
-                console.error("Lỗi khi hiển thị modal:", error);
-                // Gửi một phản hồi lỗi tới người dùng nếu có thể
-                if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ content: 'Đã có lỗi xảy ra khi cố gắng mở form. Vui lòng thử lại sau.', ephemeral: true });
-                }
-            }
         }
 
         // --- XỬ LÝ CÁC LỆNH NHẠC ---
