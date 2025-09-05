@@ -1722,7 +1722,10 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === 'select_ticket_category') {
+        const customId = interaction.customId;
+
+        // Xử lý menu của Ticket
+        if (customId === 'select_ticket_category') {
             await interaction.deferReply({ ephemeral: true });
 
             const selectedValue = interaction.values[0];
@@ -1736,13 +1739,13 @@ client.on('interactionCreate', async interaction => {
                     categoryId = SUPPORT_TICKET_CATEGORY_ID;
                     ticketType = 'hỗ-trợ';
                     welcomeMessage = `Hỗ trợ bạn về vấn đề **Kỹ thuật/Chung**. Vui lòng trình bày chi tiết vấn đề bạn đang gặp phải.`;
-                    ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ về vấn đề gì hoặc khiếu nại thì cứ ghi vào nhé**`
+                    ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`;
                     break;
                 case 'admin_contact':
                     categoryId = ADMIN_TICKET_CATEGORY_ID;
                     ticketType = 'admin';
                     welcomeMessage = `**Cần alo ngay em Phúc**`;
-                    ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`
+                    ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ về vấn đề gì hoặc khiếu nại thì cứ ghi vào nhé**`;
                     break;
                 default:
                     return interaction.followUp({ content: 'Lựa chọn không hợp lệ.' });
@@ -1766,22 +1769,18 @@ client.on('interactionCreate', async interaction => {
                 ticketCounter++;
                 db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run(ticketCounter.toString(), 'ticketCounter');
 
-                const ticketWelcomeEmbed = new EmbedBuilder()
-                    .setColor('#57F287')
-                    .setTitle(`Ticket ${ticketType.charAt(0).toUpperCase() + ticketType.slice(1)}`)
-                    .setDescription(`Chào ${interaction.user}, cảm ơn bạn đã liên hệ.\n\nĐội ngũ <@&${SUPPORT_ROLE_ID}> sẽ ${welcomeMessage}`)
-                    .setTimestamp();
+                const ticketWelcomeEmbed = new EmbedBuilder().setColor('#57F287').setTitle(`Ticket ${ticketType.charAt(0).toUpperCase() + ticketType.slice(1)}`).setDescription(`Chào ${interaction.user}, cảm ơn bạn đã liên hệ.\n\nĐội ngũ <@&${SUPPORT_ROLE_ID}> sẽ ${welcomeMessage}`).setTimestamp();
                 const closeButton = new ButtonBuilder().setCustomId('close_ticket').setLabel('Đóng Ticket').setStyle(ButtonStyle.Danger).setEmoji('<:close51:1413054667021352960>');
                 const row = new ActionRowBuilder().addComponents(closeButton);
                 await ticketChannel.send({ content: ticketContent, embeds: [ticketWelcomeEmbed], components: [row] });
-
                 await interaction.followUp({ content: `Đã tạo ticket của bạn tại ${ticketChannel}.` });
 
             } catch (error) {
                 console.error("Lỗi khi tạo ticket theo danh mục:", error);
                 await interaction.followUp({ content: 'Đã xảy ra lỗi. Vui lòng kiểm tra lại các ID Category đã khai báo và quyền của bot.' });
             }
-        }
+        } 
+        // Xử lý menu của Help
         else if (customId === 'help_category_select') {
             const selectedCategory = interaction.values[0];
             const categories = {
@@ -1797,6 +1796,7 @@ client.on('interactionCreate', async interaction => {
             const categoryData = categories[selectedCategory];
             if (!categoryData) return;
 
+            // SỬA LỖI Ở ĐÂY: Dùng trực tiếp biến 'commands' đã có sẵn ở đầu file
             const commandList = categoryData.commands
                 .map(cmdName => {
                     const cmd = commands.find(c => c.name === cmdName);
@@ -1811,7 +1811,6 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(commandList || 'Chưa có lệnh nào trong danh mục này.')
                 .setFooter({ text: 'Dùng /help [tên lệnh] để xem chi tiết hơn về một lệnh.'});
 
-            // Cập nhật tin nhắn gốc với danh sách lệnh của danh mục đã chọn
             await interaction.update({ embeds: [categoryEmbed] });
         }
         return;
