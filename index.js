@@ -10,12 +10,21 @@ app.listen(port, () => {
   console.log(`Server đang lắng nghe tại http://localhost:${port}`);
 });
 
+// --- THƯ VIỆN CŨ ---
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder } = require('discord.js');
 const ms = require('ms');
 require('dotenv').config();
 
+// --- THƯ VIỆN MỚI CHO TÍNH NĂNG NGHE NHẠC ---
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } = require('@discordjs/voice');
+const play = require('play-dl');
+
 const Database = require('better-sqlite3');
 const db = new Database('/data/data.db');
+
+// --- BIẾN TOÀN CỤC MỚI ĐỂ QUẢN LÝ HÀNG ĐỢI NHẠC ---
+// Sử dụng Map để lưu hàng đợi cho mỗi server, với key là ID của server
+const queue = new Map();
 
 // --- CẤU HÌNH CHO AUTO-MOD ---
 const MOD_LOG_CHANNEL_ID = '1413071939395653722';
@@ -79,7 +88,6 @@ function setupDatabase() {
         )
     `);
 
-    // --- BỔ SUNG TABLE CHO GIVEAWAY ---
     db.exec(`
         CREATE TABLE IF NOT EXISTS giveaways (
             messageId TEXT PRIMARY KEY,
@@ -126,7 +134,6 @@ function updateUserXP(userId, guildId, newXp) {
     return { newXp, newLevel };
 }
 
-
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1128546415250198539';
 const SUPPORT_ROLE_ID = '1412090993909563534';    
 const WELCOME_CHANNEL_ID = '1406560267214524527';
@@ -139,7 +146,7 @@ const SUPPORT_TICKET_CATEGORY_ID = '1413009121606631456';
 const ADMIN_TICKET_CATEGORY_ID = '1413009227156291634';
 
 const commands = [
-    // ... (các lệnh cũ không thay đổi)
+    // --- CÁC LỆNH CŨ GIỮ NGUYÊN ---
     new SlashCommandBuilder()
         .setName('info')
         .setDescription('Hiển thị thông tin người dùng hoặc server.')
@@ -156,14 +163,10 @@ const commands = [
             subcommand
                 .setName('server')
                 .setDescription('Hiển thị thông tin về server hiện tại.')
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
+        ),
     new SlashCommandBuilder()
         .setName('ping')
-        .setDescription('Kiểm tra độ trễ của bot')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
+        .setDescription('Kiểm tra độ trễ của bot'),
     new SlashCommandBuilder()
         .setName('hi1')
         .setDescription('Gửi lời chào thân thương đến một người đáng yêu.')
@@ -171,8 +174,7 @@ const commands = [
             option.setName('người')
                 .setDescription('Người bạn muốn chào')
                 .setRequired(true)
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+        ),
     new SlashCommandBuilder()
         .setName('hi2')
         .setDescription('Gửi lời chúc theo buổi tới một người dễ thương.')
@@ -196,9 +198,7 @@ const commands = [
             option.setName('loi_chuc')
                 .setDescription('Hoặc tự nhập một lời chúc riêng.')
                 .setRequired(false)
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
+        ),
     new SlashCommandBuilder()
         .setName('time')
         .setDescription('Xem thời gian hiện tại ở các quốc gia')
@@ -215,9 +215,7 @@ const commands = [
                     { name: '🇷🇺 Nga (Moscow)', value: 'Europe/Moscow' },
                     { name: '🇬🇧 Vương quốc Anh', value: 'Europe/London' }
                 )
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
+        ),
     new SlashCommandBuilder()
         .setName('feedback')
         .setDescription('Mở một form để gửi phản hồi trực tiếp.')
@@ -226,20 +224,16 @@ const commands = [
                 .setDescription('Kênh để gửi phản hồi. Bỏ trống sẽ gửi đến kênh mặc định.')
                 .addChannelTypes(ChannelType.GuildText)
                 .setRequired(false)
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
+        ),
     new SlashCommandBuilder()
         .setName('avatar')
         .setDescription('Xem ảnh đại diện của một người dùng.')
         .addUserOption(option => option.setName('người').setDescription('Người bạn muốn xem avatar').setRequired(false)),
-    
     new SlashCommandBuilder()
         .setName('poll')
         .setDescription('Tạo một cuộc bình chọn nhanh.')
         .addStringOption(option => option.setName('câu_hỏi').setDescription('Nội dung câu hỏi bình chọn.').setRequired(true))
         .addStringOption(option => option.setName('lựa_chọn').setDescription('Các lựa chọn, cách nhau bởi dấu phẩy (,). Tối đa 10.').setRequired(true)),
-
     new SlashCommandBuilder()
         .setName('announce')
         .setDescription('Gửi một thông báo dưới dạng embed tới một kênh.')
@@ -248,68 +242,59 @@ const commands = [
         .addStringOption(option => option.setName('tiêu_đề').setDescription('Tiêu đề của thông báo.'))
         .addStringOption(option => option.setName('màu').setDescription('Mã màu Hex cho embed (vd: #3498db).'))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
     new SlashCommandBuilder()
         .setName('clear')
         .setDescription('Xóa một số lượng tin nhắn trong kênh hiện tại.')
         .addIntegerOption(option => option.setName('số_lượng').setDescription('Số tin nhắn cần xóa (từ 1 đến 100).').setRequired(true).setMinValue(1).setMaxValue(100))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-
     new SlashCommandBuilder()
         .setName('kick')
         .setDescription('Kick một thành viên khỏi server.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần kick').setRequired(true))
         .addStringOption(option => option.setName('reason').setDescription('Lý do kick'))
-        .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers | PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
         .setDMPermission(false),
-
     new SlashCommandBuilder()
         .setName('ban')
         .setDescription('Ban một thành viên khỏi server.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần ban').setRequired(true))
         .addStringOption(option => option.setName('reason').setDescription('Lý do ban'))
-        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers | PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
         .setDMPermission(false),
-
     new SlashCommandBuilder()
         .setName('unban')
         .setDescription('Gỡ ban cho một thành viên bằng ID.')
         .addStringOption(option => option.setName('userid').setDescription('ID của người dùng cần gỡ ban').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers | PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
         .setDMPermission(false),
-
     new SlashCommandBuilder()
         .setName('timeout')
         .setDescription('Timeout một thành viên.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần timeout').setRequired(true))
         .addStringOption(option => option.setName('time').setDescription('Thời gian mute (vd: 10m, 1h, 2d)').setRequired(true))
         .addStringOption(option => option.setName('reason').setDescription('Lý do mute'))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers | PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
         .setDMPermission(false),
-
     new SlashCommandBuilder()
         .setName('untimeout')
         .setDescription('Gỡ timeout cho một thành viên.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần gỡ timeout').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers | PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
         .setDMPermission(false),
-
     new SlashCommandBuilder()
         .setName('rename')
         .setDescription('Đổi nickname cho một thành viên.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần đổi tên').setRequired(true))
         .addStringOption(option => option.setName('nickname').setDescription('Nickname mới').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames | PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
         .setDMPermission(false),
-
     new SlashCommandBuilder()
         .setName('move')
         .setDescription('Di chuyển một thành viên sang kênh thoại khác.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần di chuyển').setRequired(true))
         .addChannelOption(option => option.setName('channel').setDescription('Kênh thoại muốn chuyển đến').addChannelTypes(ChannelType.GuildVoice).setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.MoveMembers | PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.MoveMembers)
         .setDMPermission(false),
-
     new SlashCommandBuilder()
         .setName('roletemp')
         .setDescription('Gán một vai trò tạm thời cho thành viên.')
@@ -317,14 +302,12 @@ const commands = [
         .addRoleOption(option => option.setName('vai_trò').setDescription('Vai trò bạn muốn gán.').setRequired(true))
         .addStringOption(option => option.setName('thời_hạn').setDescription('Thời hạn (ví dụ: 10m, 1h, 7d).').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
-
     new SlashCommandBuilder()
         .setName('unroletemp')
         .setDescription('Gỡ một vai trò tạm thời khỏi thành viên ngay lập tức.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên bạn muốn gỡ vai trò.').setRequired(true))
         .addRoleOption(option => option.setName('vai_trò').setDescription('Vai trò bạn muốn gỡ.').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
-
     new SlashCommandBuilder()
         .setName('ticketsetup')
         .setDescription('Cài đặt bảng điều khiển ticket có tùy chỉnh.')
@@ -335,7 +318,6 @@ const commands = [
         .addStringOption(option => option.setName('anh_banner').setDescription('URL của hình ảnh lớn hiển thị phía trên embed.'))
         .addStringOption(option => option.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).'))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
     new SlashCommandBuilder()
         .setName('formsetup')
         .setDescription('Cài đặt bảng điều khiển để mở form feedback.')
@@ -346,7 +328,6 @@ const commands = [
         .addStringOption(option => option.setName('hinh_anh').setDescription('URL hình ảnh (ảnh bìa) của bảng điều khiển.'))
         .addStringOption(option => option.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).'))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    
     new SlashCommandBuilder()
         .setName('warn')
         .setDescription('Gửi cảnh cáo đến một thành viên.')
@@ -361,59 +342,48 @@ const commands = [
             )
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-
     new SlashCommandBuilder()
         .setName('resettickets')
         .setDescription('Reset số đếm của ticket về lại 1.')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-        
     new SlashCommandBuilder()
         .setName('warnings')
         .setDescription('Kiểm tra số lần cảnh cáo của một thành viên.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần kiểm tra.').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-
     new SlashCommandBuilder()
         .setName('resetwarnings')
         .setDescription('Xóa toàn bộ cảnh cáo của một thành viên.')
         .addUserOption(option => option.setName('người').setDescription('Thành viên cần xóa cảnh cáo.').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
     new SlashCommandBuilder()
         .setName('level')
         .setDescription('Xem thông tin level của bạn hoặc người khác.')
         .addUserOption(option => option.setName('user').setDescription('Người bạn muốn xem level.')),
-
     new SlashCommandBuilder()
         .setName('daily')
         .setDescription('Nhận phần thưởng XP hàng ngày.'),
-    
     new SlashCommandBuilder()
         .setName('leaderboard')
         .setDescription('Xem bảng xếp hạng level của server.'),
-
     new SlashCommandBuilder()
         .setName('add-xp')
         .setDescription('[Admin] Cộng XP cho một thành viên.')
         .addUserOption(option => option.setName('user').setDescription('Thành viên cần cộng XP.').setRequired(true))
         .addIntegerOption(option => option.setName('amount').setDescription('Số XP cần cộng.').setRequired(true).setMinValue(1))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
     new SlashCommandBuilder()
         .setName('remove-xp')
         .setDescription('[Admin] Trừ XP của một thành viên.')
         .addUserOption(option => option.setName('user').setDescription('Thành viên cần trừ XP.').setRequired(true))
         .addIntegerOption(option => option.setName('amount').setDescription('Số XP cần trừ.').setRequired(true).setMinValue(1))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
     new SlashCommandBuilder()
         .setName('set-level')
         .setDescription('[Admin] Thiết lập level chính xác cho một thành viên.')
         .addUserOption(option => option.setName('user').setDescription('Thành viên cần set level.').setRequired(true))
         .addIntegerOption(option => option.setName('level').setDescription('Level muốn thiết lập.').setRequired(true).setMinValue(0))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-    // --- ĐỊNH NGHĨA LỆNH GIVEAWAY ---
     new SlashCommandBuilder()
         .setName('giveaway')
         .setDescription('Quản lý hệ thống giveaway.')
@@ -441,6 +411,52 @@ const commands = [
                 .addStringOption(option => option.setName('message_id').setDescription('ID tin nhắn của giveaway đang chạy.').setRequired(true))
         ),
 
+    // --- CÁC LỆNH MỚI CHO TÍNH NĂNG NGHE NHẠC ---
+    new SlashCommandBuilder()
+        .setName('play')
+        .setDescription('Phát một bài hát từ YouTube.')
+        .addStringOption(option => 
+            option.setName('bài_hát')
+                .setDescription('Tên bài hát hoặc link YouTube.')
+                .setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('skip')
+        .setDescription('Bỏ qua bài hát hiện tại.'),
+
+    new SlashCommandBuilder()
+        .setName('stop')
+        .setDescription('Dừng phát nhạc và xóa hàng đợi.'),
+
+    new SlashCommandBuilder()
+        .setName('queue')
+        .setDescription('Hiển thị hàng đợi bài hát.'),
+
+    new SlashCommandBuilder()
+        .setName('pause')
+        .setDescription('Tạm dừng bài hát hiện tại.'),
+
+    new SlashCommandBuilder()
+        .setName('resume')
+        .setDescription('Tiếp tục phát bài hát đã tạm dừng.'),
+
+    new SlashCommandBuilder()
+        .setName('nowplaying')
+        .setDescription('Hiển thị thông tin bài hát đang phát.'),
+
+    new SlashCommandBuilder()
+        .setName('loop')
+        .setDescription('Lặp lại bài hát hoặc hàng đợi.')
+        .addStringOption(option =>
+            option.setName('chế_độ')
+                .setDescription('Chọn chế độ lặp.')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Tắt', value: 'off' },
+                    { name: 'Bài hát', value: 'song' },
+                    { name: 'Hàng đợi', value: 'queue' }
+                )),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -460,9 +476,51 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessageReactions] });
 
-// --- CÁC HÀM XỬ LÝ GIVEAWAY ---
+// ================================================================= //
+// --- CÁC HÀM XỬ LÝ TÍNH NĂNG NGHE NHẠC ---
+// ================================================================= //
 
-// Hàm kết thúc giveaway
+async function playSong(guild, song) {
+    const serverQueue = queue.get(guild.id);
+
+    if (!song) {
+        // Nếu không còn bài hát nào, rời kênh thoại sau 1 phút và xóa hàng đợi
+        setTimeout(() => {
+            const currentQueue = queue.get(guild.id);
+            // Kiểm tra lại xem có bài hát nào được thêm vào trong lúc chờ không
+            if (currentQueue && currentQueue.songs.length === 0) {
+                if(currentQueue.connection) currentQueue.connection.destroy();
+                queue.delete(guild.id);
+            }
+        }, 60000); // 1 phút
+        return;
+    }
+
+    // Tạo luồng âm thanh từ youtube
+    const stream = await play.stream(song.url);
+    const resource = createAudioResource(stream.stream, { inputType: stream.type });
+    
+    // Phát nhạc
+    serverQueue.player.play(resource);
+    serverQueue.playing = true;
+
+    // Gửi thông báo đang phát nhạc
+    const nowPlayingEmbed = new EmbedBuilder()
+        .setColor('Green')
+        .setTitle('🎵 Đang phát')
+        .setDescription(`**[${song.title}](${song.url})**`)
+        .setThumbnail(song.thumbnail)
+        .addFields(
+            { name: 'Thời lượng', value: song.duration, inline: true },
+            { name: 'Yêu cầu bởi', value: song.requestedBy.toString(), inline: true }
+        )
+        .setTimestamp();
+        
+    await serverQueue.textChannel.send({ embeds: [nowPlayingEmbed] });
+}
+
+
+// --- CÁC HÀM XỬ LÝ GIVEAWAY ---
 async function endGiveaway(messageId) {
     const giveaway = db.prepare('SELECT * FROM giveaways WHERE messageId = ? AND ended = 0').get(messageId);
     if (!giveaway) return;
@@ -508,7 +566,6 @@ async function endGiveaway(messageId) {
     }
 }
 
-// Hàm lên lịch/khôi phục các giveaway khi bot khởi động
 async function scheduleGiveawaysOnStartup() {
     const activeGiveaways = db.prepare('SELECT * FROM giveaways WHERE ended = 0').all();
     console.log(`🔎 Tìm thấy ${activeGiveaways.length} giveaway đang hoạt động...`);
@@ -565,20 +622,17 @@ client.once('ready', () => {
 
     client.user.setPresence({
         activities: [{
-            name: '🌠 Sao Băng Rơi', 
-            type: ActivityType.Watching 
+            name: '🎶 Nhạc cho bạn', 
+            type: ActivityType.Playing
         }],
-        status: 'idle', 
+        status: 'online', 
     });
 
     restoreTempRoles();
-    // --- BỔ SUNG CHO GIVEAWAY ---
-    // Khôi phục lịch trình cho các giveaway còn hoạt động
     scheduleGiveawaysOnStartup();
 });
 
 client.on('interactionCreate', async interaction => {
-    // ... (các handler cũ không thay đổi)
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('feedbackModal_')) {
             const channelId = interaction.customId.split('_')[1];
@@ -657,10 +711,172 @@ client.on('interactionCreate', async interaction => {
             await interaction.showModal(modal);
         }
     }
-
+    
     if (interaction.isChatInputCommand()) {
         const { commandName, user, guild } = interaction;
+        
+        // --- XỬ LÝ CÁC LỆNH NHẠC ---
+        const musicCommands = ['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying', 'loop'];
+        if (musicCommands.includes(commandName)) {
+            const serverQueue = queue.get(interaction.guild.id);
+            const voiceChannel = interaction.member.voice.channel;
+            
+            if (commandName === 'play') {
+                if (!voiceChannel) return interaction.reply({ content: 'Bạn cần phải ở trong một kênh thoại để phát nhạc!', ephemeral: true });
+                const permissions = voiceChannel.permissionsFor(interaction.client.user);
+                if (!permissions.has(PermissionFlagsBits.Connect) || !permissions.has(PermissionFlagsBits.Speak)) {
+                    return interaction.reply({ content: 'Tôi không có quyền tham gia và nói trong kênh thoại của bạn!', ephemeral: true });
+                }
 
+                await interaction.deferReply();
+                const query = interaction.options.getString('bài_hát');
+                
+                // Tìm kiếm video
+                const searchResult = await play.search(query, { limit: 1 });
+                if (searchResult.length === 0) {
+                    return interaction.followUp({ content: `Không tìm thấy bài hát nào với tên "${query}"` });
+                }
+                const video = searchResult[0];
+
+                const song = {
+                    title: video.title,
+                    url: video.url,
+                    thumbnail: video.thumbnails[0]?.url,
+                    duration: video.durationRaw,
+                    requestedBy: interaction.user
+                };
+
+                if (!serverQueue) {
+                    const queueConstruct = {
+                        textChannel: interaction.channel,
+                        voiceChannel: voiceChannel,
+                        connection: null,
+                        songs: [],
+                        player: createAudioPlayer(),
+                        playing: true,
+                        loop: 'off' // off, song, queue
+                    };
+                    queue.set(interaction.guild.id, queueConstruct);
+                    queueConstruct.songs.push(song);
+
+                    try {
+                        const connection = joinVoiceChannel({
+                            channelId: voiceChannel.id,
+                            guildId: interaction.guild.id,
+                            adapterCreator: interaction.guild.voiceAdapterCreator,
+                        });
+                        queueConstruct.connection = connection;
+
+                        // Tự động chuyển bài
+                        queueConstruct.player.on(AudioPlayerStatus.Idle, () => {
+                            const oldSong = queueConstruct.songs.shift();
+                            if (queueConstruct.loop === 'song') {
+                                queueConstruct.songs.unshift(oldSong); // Thêm lại bài cũ vào đầu hàng đợi
+                            } else if (queueConstruct.loop === 'queue') {
+                                queueConstruct.songs.push(oldSong); // Thêm bài cũ vào cuối hàng đợi
+                            }
+                            playSong(interaction.guild, queueConstruct.songs[0]);
+                        });
+
+                        // Xử lý lỗi
+                        queueConstruct.player.on('error', error => {
+                            console.error(`Lỗi player: ${error.message}`);
+                            queueConstruct.songs.shift();
+                            playSong(interaction.guild, queueConstruct.songs[0]);
+                        });
+                        
+                        connection.subscribe(queueConstruct.player);
+                        playSong(interaction.guild, queueConstruct.songs[0]);
+                        await interaction.followUp({ content: `Đã bắt đầu phát: **${song.title}**` });
+
+
+                    } catch (err) {
+                        console.error(err);
+                        queue.delete(interaction.guild.id);
+                        return interaction.followUp({ content: 'Đã có lỗi xảy ra khi kết nối vào kênh thoại.' });
+                    }
+                } else {
+                    serverQueue.songs.push(song);
+                    return interaction.followUp({ content: `Đã thêm **${song.title}** vào hàng đợi!` });
+                }
+            }
+            else if (commandName === 'skip') {
+                if (!voiceChannel) return interaction.reply({ content: 'Bạn phải ở trong kênh thoại để dùng lệnh này!', ephemeral: true });
+                if (!serverQueue) return interaction.reply({ content: 'Không có bài hát nào đang phát!', ephemeral: true });
+                if (serverQueue.songs.length <= 1 && serverQueue.loop !== 'queue') {
+                    serverQueue.player.stop();
+                    serverQueue.connection.destroy();
+                    queue.delete(interaction.guild.id);
+                    return interaction.reply('Đã bỏ qua. Hàng đợi trống, tôi đã rời kênh thoại.');
+                }
+                serverQueue.player.stop(); // Sự kiện 'idle' sẽ tự động phát bài tiếp theo
+                return interaction.reply('Đã bỏ qua bài hát!');
+            }
+            else if (commandName === 'stop') {
+                if (!voiceChannel) return interaction.reply({ content: 'Bạn phải ở trong kênh thoại để dùng lệnh này!', ephemeral: true });
+                if (!serverQueue) return interaction.reply({ content: 'Không có gì để dừng cả!', ephemeral: true });
+                serverQueue.songs = [];
+                serverQueue.player.stop();
+                serverQueue.connection.destroy();
+                queue.delete(interaction.guild.id);
+                return interaction.reply('Đã dừng phát nhạc và xóa hàng đợi.');
+            }
+             else if (commandName === 'queue') {
+                if (!serverQueue) return interaction.reply({ content: 'Hàng đợi đang trống!', ephemeral: true });
+                
+                const queueEmbed = new EmbedBuilder()
+                    .setColor('Blue')
+                    .setTitle('🎶 Hàng đợi bài hát')
+                    .setDescription(
+                        `**Đang phát:** [${serverQueue.songs[0].title}](${serverQueue.songs[0].url})\n\n` +
+                        (serverQueue.songs.slice(1).map((song, index) => `**${index + 1}.** [${song.title}](${song.url})`).join('\n') || 'Không có bài hát nào tiếp theo.')
+                    )
+                    .setFooter({ text: `Tổng cộng ${serverQueue.songs.length} bài hát.` });
+                
+                return interaction.reply({ embeds: [queueEmbed] });
+            }
+             else if (commandName === 'pause') {
+                if (!serverQueue || !serverQueue.playing) return interaction.reply({ content: 'Không có nhạc đang phát hoặc đã tạm dừng rồi!', ephemeral: true });
+                serverQueue.player.pause();
+                serverQueue.playing = false;
+                return interaction.reply('⏸️ Đã tạm dừng nhạc.');
+            }
+            else if (commandName === 'resume') {
+                if (!serverQueue || serverQueue.playing) return interaction.reply({ content: 'Không có gì để tiếp tục hoặc nhạc vẫn đang phát!', ephemeral: true });
+                serverQueue.player.unpause();
+                serverQueue.playing = true;
+                return interaction.reply('▶️ Đã tiếp tục phát nhạc.');
+            }
+             else if (commandName === 'nowplaying') {
+                if (!serverQueue) return interaction.reply({ content: 'Không có bài hát nào đang phát!', ephemeral: true });
+                const song = serverQueue.songs[0];
+                 const nowPlayingEmbed = new EmbedBuilder()
+                    .setColor('Green')
+                    .setTitle('🎵 Đang phát')
+                    .setDescription(`**[${song.title}](${song.url})**`)
+                    .setThumbnail(song.thumbnail)
+                    .addFields(
+                        { name: 'Thời lượng', value: song.duration, inline: true },
+                        { name: 'Yêu cầu bởi', value: song.requestedBy.toString(), inline: true }
+                    )
+                    .setTimestamp();
+                return interaction.reply({ embeds: [nowPlayingEmbed] });
+            }
+             else if (commandName === 'loop') {
+                if (!serverQueue) return interaction.reply({ content: 'Không có gì để lặp lại!', ephemeral: true });
+                const mode = interaction.options.getString('chế_độ');
+                serverQueue.loop = mode;
+                let modeText;
+                if (mode === 'off') modeText = 'Tắt lặp lại';
+                else if (mode === 'song') modeText = 'Lặp lại bài hát hiện tại';
+                else if (mode === 'queue') modeText = 'Lặp lại toàn bộ hàng đợi';
+                return interaction.reply(`🔁 Đã đặt chế độ lặp thành: **${modeText}**.`);
+            }
+
+            return; // Dừng tại đây để không chạy các lệnh khác
+        }
+
+        // --- CÁC LỆNH CŨ ---
         if (commandName === 'info') {
              await interaction.deferReply();
              const subcommand = interaction.options.getSubcommand();
@@ -1222,19 +1438,10 @@ client.on('interactionCreate', async interaction => {
             const targetUser = interaction.options.getUser('user') || user;
             const userData = getUserStats(targetUser.id, guild.id);
 
-            // --- LOGIC LEVEL MỚI: TÍNH TOÁN DỰA TRÊN CÔNG THỨC LŨY TIẾN ---
             const currentLevel = userData.level;
-            
-            // Tổng XP cần để đạt được level hiện tại (mốc dưới)
             const xpForCurrentLevel = 50 * currentLevel * (currentLevel + 1);
-            
-            // Tổng XP cần để đạt được level tiếp theo (mốc trên)
             const xpForNextLevel = 50 * (currentLevel + 1) * (currentLevel + 2);
-
-            // Lượng XP cần để lên cấp (sẽ tăng dần theo level)
             const neededProgress = xpForNextLevel - xpForCurrentLevel;
-            
-            // Lượng XP người dùng đã có trong level hiện tại
             const currentProgress = userData.xp - xpForCurrentLevel;
     
             const percentage = Math.max(0, Math.min(100, (currentProgress / neededProgress) * 100));
@@ -1324,7 +1531,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: `✅ Đã thiết lập ${targetUser} thành **Level ${level}** với **${requiredXp} XP**.`, ephemeral: true });
         }
         
-        // --- LOGIC XỬ LÝ LỆNH GIVEAWAY ---
         else if (commandName === 'giveaway') {
             const subcommand = interaction.options.getSubcommand();
             
@@ -1652,19 +1858,33 @@ client.on('messageCreate', async message => {
 });
 
 client.on('voiceStateUpdate', (oldState, newState) => {
+    // --- LOGIC CỘNG XP KHI Ở KÊNH THOẠI ---
     const userId = newState.id;
     const guildId = newState.guild.id;
 
-    if (newState.member.user.bot) return;
+    if (newState.member.user.bot && newState.id !== client.user.id) return; // Bỏ qua các bot khác
 
+    // Tự động rời kênh nếu kênh trống
+    if (oldState.channelId && oldState.channel.members.size === 1 && oldState.channel.members.has(client.user.id)) {
+        const serverQueue = queue.get(oldState.guild.id);
+        if (serverQueue) {
+            serverQueue.connection.destroy();
+            queue.delete(oldState.guild.id);
+            serverQueue.textChannel.send('Mọi người đã rời đi, tôi cũng đi đây. Hẹn gặp lại!');
+        }
+    }
+
+
+    if (newState.member.user.bot) return; // Bỏ qua logic XP cho bot
+    
     if (NO_XP_ROLE_ID && newState.member.roles.cache.has(NO_XP_ROLE_ID)) {
         return;
     }
 
     const isJoining = (!oldState.channelId && newState.channelId);
     if (isJoining) {
-        const user = getUserStats(userId, guildId);
-        db.prepare('UPDATE user_stats SET voiceJoinTimestamp = ? WHERE id = ?').run(Date.now(), `${userId}-${guildId}`);
+        getUserStats(userId, guildId); // Đảm bảo người dùng có trong DB
+        db.prepare('UPDATE user_stats SET voiceJoinTimestamp = ? WHERE userId = ? AND guildId = ?').run(Date.now(), userId, guildId);
     } 
     
     const isLeaving = (oldState.channelId && !newState.channelId);
@@ -1686,7 +1906,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
                     }
                 }
             }
-            db.prepare('UPDATE user_stats SET voiceJoinTimestamp = 0 WHERE id = ?').run(`${userId}-${guildId}`);
+            db.prepare('UPDATE user_stats SET voiceJoinTimestamp = 0 WHERE userId = ? AND guildId = ?').run(userId, guildId);
         }
     }
 });
