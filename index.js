@@ -947,16 +947,20 @@ client.on('interactionCreate', async interaction => {
         }
         return; // Dừng lại sau khi xử lý nút
     }
-    
+
+    // --- XỬ LÝ LỆNH CHAT (/) ---
     if (interaction.isChatInputCommand()) {
-
-        if (!interaction.inGuild()) return;
-
+        if (!interaction.inGuild()) return; // Lệnh chat chỉ hoạt động trong server
         const { commandName, user, guild } = interaction;
     
-        if (commandName === 'applysetup') {
+        if (commandName === 'help') {
+            const initialEmbed = new EmbedBuilder().setColor('Aqua').setTitle('👋 Bảng điều khiển trợ giúp của Bánh Bèo Bot').setDescription('Mình là một bot đa năng sẵn sàng hỗ trợ bạn quản lý và giải trí trong server.\n\nHãy chọn một danh mục từ menu bên dưới để xem các lệnh tương ứng.').setThumbnail(client.user.displayAvatarURL()).setFooter({ text: 'Chọn một tùy chọn để bắt đầu.' });
+            const categoryMenu = new StringSelectMenuBuilder().setCustomId('help_category_select').setPlaceholder('Vui lòng chọn một danh mục...').addOptions([{ label: '✨ Thông tin & Vui vẻ', description: 'Các lệnh dùng để xem thông tin và giải trí.', value: 'fun_info', emoji: '✨' }, { label: '🛠️ Quản lý & Tiện ích', description: 'Các lệnh dành cho quản trị viên và điều hành viên.', value: 'mod_utility', emoji: '🛠️' }, { label: '👑 Quản lý Vai trò', description: 'Các lệnh liên quan đến vai trò.', value: 'roles', emoji: '👑' }, { label: '🎫 Ticket & Form', description: 'Các lệnh cài đặt hệ thống hỗ trợ.', value: 'support', emoji: '🎫' }, { label: '🌟 Hệ thống Level', description: 'Các lệnh tương tác với hệ thống level.', value: 'leveling', emoji: '🌟' }, { label: '🎉 Giveaway', description: 'Các lệnh để tạo và quản lý giveaway.', value: 'giveaway', emoji: '🎉' }, { label: '🎶 Nghe nhạc', description: 'Các lệnh để nghe nhạc.', value: 'music', emoji: '🎶' }, ]);
+            const row = new ActionRowBuilder().addComponents(categoryMenu);
+            return interaction.reply({ embeds: [initialEmbed], components: [row] });
+        }
+        else if (commandName === 'applysetup') {
             await interaction.deferReply({ ephemeral: true });
-
             const targetChannel = interaction.options.getChannel('kênh_nhận_đơn');
             const title = interaction.options.getString('tiêu_đề');
             const description = interaction.options.getString('mô_tả').replace(/\\n/g, '\n');
@@ -964,28 +968,141 @@ client.on('interactionCreate', async interaction => {
             const menuLabel = interaction.options.getString('menu_label');
             const content = interaction.options.getString('content');
             const imageUrl = interaction.options.getString('image_url');
-
             const applyEmbed = new EmbedBuilder().setColor('Blue').setTitle(title).setDescription(description);
             if (imageUrl) applyEmbed.setImage(imageUrl);
-
-            const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId(`staff_apply_menu_${targetChannel.id}`)
-                .setPlaceholder(menuPlaceholder)
-                .addOptions([{ label: menuLabel, description: 'Chọn mục này để bắt đầu quá trình đăng ký.', value: 'start_application' }]);
-            
+            const selectMenu = new StringSelectMenuBuilder().setCustomId(`staff_apply_menu_${targetChannel.id}`).setPlaceholder(menuPlaceholder).addOptions([{ label: menuLabel, description: 'Chọn mục này để bắt đầu quá trình đăng ký.', value: 'start_application' }]);
             const row = new ActionRowBuilder().addComponents(selectMenu);
             const messagePayload = { embeds: [applyEmbed], components: [row] };
             if (content) messagePayload.content = content;
-
             await interaction.channel.send(messagePayload);
             await interaction.followUp({ content: `✅ Đã tạo bảng tuyển dụng thành công!` });
         }
+        const musicCommands = ['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying', 'loop'];
+        if (musicCommands.includes(commandName)) {
+            const serverQueue = queue.get(interaction.guild.id);
+            const voiceChannel = interaction.member.voice.channel;
+            if (commandName === 'play') {
+                if (!voiceChannel) return interaction.reply({ content: 'Bạn cần phải ở trong một kênh thoại để phát nhạc!', ephemeral: true });
+                const permissions = voiceChannel.permissionsFor(interaction.client.user);
+                if (!permissions.has(PermissionFlagsBits.Connect) || !permissions.has(PermissionFlagsBits.Speak)) {
+                    return interaction.reply({ content: 'Tôi không có quyền tham gia và nói trong kênh thoại của bạn!', ephemeral: true });
+                }
+                await interaction.deferReply();
+                const query = interaction.options.getString('bài_hát');
+                const searchResult = await play.search(query, { limit: 1 });
+                if (searchResult.length === 0) {
+                    return interaction.followUp({ content: `Không tìm thấy bài hát nào với tên "${query}"` });
+                }
+                const video = searchResult[0];
+                const song = { title: video.title, url: video.url, thumbnail: video.thumbnails[0]?.url, duration: video.durationRaw, requestedBy: interaction.user };
+                if (!serverQueue) {
+                    const queueConstruct = { textChannel: interaction.channel, voiceChannel: voiceChannel, connection: null, songs: [], player: createAudioPlayer(), playing: true, loop: 'off' };
+                    queue.set(interaction.guild.id, queueConstruct);
+                    queueConstruct.songs.push(song);
+                    try {
+                        const connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: interaction.guild.id, adapterCreator: interaction.guild.voiceAdapterCreator });
+                        queueConstruct.connection = connection;
+                        queueConstruct.player.on(AudioPlayerStatus.Idle, () => {
+                            const oldSong = queueConstruct.songs.shift();
+                            if (queueConstruct.loop === 'song') queueConstruct.songs.unshift(oldSong);
+                            else if (queueConstruct.loop === 'queue') queueConstruct.songs.push(oldSong);
+                            playSong(interaction.guild, queueConstruct.songs[0]);
+                        });
+                        queueConstruct.player.on('error', error => { console.error(`Lỗi player: ${error.message}`); queueConstruct.songs.shift(); playSong(interaction.guild, queueConstruct.songs[0]); });
+                        connection.subscribe(queueConstruct.player);
+                        playSong(interaction.guild, queueConstruct.songs[0]);
+                        await interaction.followUp({ content: `Đã bắt đầu phát: **${song.title}**` });
+                    } catch (err) {
+                        console.error(err);
+                        queue.delete(interaction.guild.id);
+                        return interaction.followUp({ content: 'Đã có lỗi xảy ra khi kết nối vào kênh thoại.' });
+                    }
+                } else {
+                    serverQueue.songs.push(song);
+                    return interaction.followUp({ content: `Đã thêm **${song.title}** vào hàng đợi!` });
+                }
+            } else if (commandName === 'skip') {
+                if (!voiceChannel) return interaction.reply({ content: 'Bạn phải ở trong kênh thoại để dùng lệnh này!', ephemeral: true });
+                if (!serverQueue) return interaction.reply({ content: 'Không có bài hát nào đang phát!', ephemeral: true });
+                if (serverQueue.songs.length <= 1 && serverQueue.loop !== 'queue') {
+                    serverQueue.player.stop();
+                    serverQueue.connection.destroy();
+                    queue.delete(interaction.guild.id);
+                    return interaction.reply('Đã bỏ qua. Hàng đợi trống, tôi đã rời kênh thoại.');
+                }
+                serverQueue.player.stop();
+                return interaction.reply('Đã bỏ qua bài hát!');
+            } else if (commandName === 'stop') {
+                if (!voiceChannel) return interaction.reply({ content: 'Bạn phải ở trong kênh thoại để dùng lệnh này!', ephemeral: true });
+                if (!serverQueue) return interaction.reply({ content: 'Không có gì để dừng cả!', ephemeral: true });
+                serverQueue.songs = [];
+                serverQueue.player.stop();
+                serverQueue.connection.destroy();
+                queue.delete(interaction.guild.id);
+                return interaction.reply('Đã dừng phát nhạc và xóa hàng đợi.');
+            } else if (commandName === 'queue') {
+                if (!serverQueue) return interaction.reply({ content: 'Hàng đợi đang trống!', ephemeral: true });
+                const queueEmbed = new EmbedBuilder().setColor('Blue').setTitle('🎶 Hàng đợi bài hát').setDescription(`**Đang phát:** [${serverQueue.songs[0].title}](${serverQueue.songs[0].url})\n\n` + (serverQueue.songs.slice(1).map((song, index) => `**${index + 1}.** [${song.title}](${song.url})`).join('\n') || 'Không có bài hát nào tiếp theo.')).setFooter({ text: `Tổng cộng ${serverQueue.songs.length} bài hát.` });
+                return interaction.reply({ embeds: [queueEmbed] });
+            } else if (commandName === 'pause') {
+                if (!serverQueue || !serverQueue.playing) return interaction.reply({ content: 'Không có nhạc đang phát hoặc đã tạm dừng rồi!', ephemeral: true });
+                serverQueue.player.pause();
+                serverQueue.playing = false;
+                return interaction.reply('⏸️ Đã tạm dừng nhạc.');
+            } else if (commandName === 'resume') {
+                if (!serverQueue || serverQueue.playing) return interaction.reply({ content: 'Không có gì để tiếp tục hoặc nhạc vẫn đang phát!', ephemeral: true });
+                serverQueue.player.unpause();
+                serverQueue.playing = true;
+                return interaction.reply('▶️ Đã tiếp tục phát nhạc.');
+            } else if (commandName === 'nowplaying') {
+                if (!serverQueue) return interaction.reply({ content: 'Không có bài hát nào đang phát!', ephemeral: true });
+                const song = serverQueue.songs[0];
+                const nowPlayingEmbed = new EmbedBuilder().setColor('Green').setTitle('🎵 Đang phát').setDescription(`**[${song.title}](${song.url})**`).setThumbnail(song.thumbnail).addFields({ name: 'Thời lượng', value: song.duration, inline: true }, { name: 'Yêu cầu bởi', value: song.requestedBy.toString(), inline: true }).setTimestamp();
+                return interaction.reply({ embeds: [nowPlayingEmbed] });
+            } else if (commandName === 'loop') {
+                if (!serverQueue) return interaction.reply({ content: 'Không có gì để lặp lại!', ephemeral: true });
+                const mode = interaction.options.getString('chế_độ');
+                serverQueue.loop = mode;
+                let modeText;
+                if (mode === 'off') modeText = 'Tắt lặp lại';
+                else if (mode === 'song') modeText = 'Lặp lại bài hát hiện tại';
+                else if (mode === 'queue') modeText = 'Lặp lại toàn bộ hàng đợi';
+                return interaction.reply(`🔁 Đã đặt chế độ lặp thành: **${modeText}**.`);
+            }
+            return;
+        }
+        if (commandName === 'info') {
+            await interaction.deferReply();
+            const subcommand = interaction.options.getSubcommand();
+            if (subcommand === 'user') {
+                const user = interaction.options.getUser('user');
+                const member = interaction.guild.members.cache.get(user.id);
+                const userEmbed = new EmbedBuilder().setColor('#0099ff').setTitle(`Thông tin về ${user.username}`).setThumbnail(user.displayAvatarURL({ dynamic: true })).addFields({ name: '👤 Tên người dùng', value: user.tag, inline: true }, { name: '🆔 ID', value: user.id, inline: true }, { name: '🤖 Có phải là bot?', value: user.bot ? 'Đúng' : 'Không', inline: true }, { name: '📅 Ngày tạo tài khoản', value: `<t:${parseInt(user.createdAt / 1000)}:F>`, inline: false }).setTimestamp();
+                if (member) {
+                    userEmbed.addFields({ name: 'Nicknames', value: member.nickname || 'Không có', inline: true }, { name: '🫂 Ngày tham gia server', value: `<t:${parseInt(member.joinedAt / 1000)}:F>`, inline: false }, { name: '🎨 Vai trò cao nhất', value: member.roles.highest.toString(), inline: true },);
+                }
+                await interaction.followUp({ embeds: [userEmbed] });
+            } else if (subcommand === 'server') {
+                const { guild } = interaction;
+                await guild.members.fetch();
+                const owner = await guild.fetchOwner();
+                const serverEmbed = new EmbedBuilder().setColor('#0099ff').setAuthor({ name: guild.name, iconURL: guild.iconURL({ dynamic: true }) }).setThumbnail(guild.iconURL({ dynamic: true })).addFields({ name: '👑 Chủ Server', value: owner.user.tag, inline: true }, { name: '📅 Ngày thành lập', value: `<t:${parseInt(guild.createdAt / 1000)}:F>`, inline: true }, { name: '🆔 Server ID', value: guild.id, inline: true }, { name: '👥 Thành viên', value: `Tổng: **${guild.memberCount}**\n👤 Con người: **${guild.members.cache.filter(member => !member.user.bot).size}**\n🤖 Bot: **${guild.members.cache.filter(member => member.user.bot).size}**`, inline: true }, { name: '🎨 Roles', value: `**${guild.roles.cache.size}** roles`, inline: true }, { name: '🙂 Emojis & 💥 Stickers', value: `🙂 **${guild.emojis.cache.size}** emojis\n💥 **${guild.stickers.cache.size}** stickers`, inline: true }).setTimestamp().setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
+                await interaction.followUp({ embeds: [serverEmbed] });
+            }
+        }
+        else if (commandName === 'ping') {
+            await interaction.deferReply();
+            const botLatency = Date.now() - interaction.createdTimestamp;
+            const apiLatency = client.ws.ping;
+            const pingEmbed = new EmbedBuilder().setColor('Green').setTitle('🏓 Pong!').addFields({ name: '🤖 Độ trễ Bot', value: `**${botLatency}ms**`, inline: true }, { name: '🌐 Độ trễ API', value: `**${apiLatency}ms**`, inline: true }).setTimestamp().setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() });
+            await interaction.followUp({ embeds: [pingEmbed] });
+        }
+        // ... (phần còn lại của các lệnh chat...)
         
-        // ... (Toàn bộ code xử lý các lệnh chat khác của bạn nằm ở đây)
-        // ...
-        // ...
+        return; 
     }
 
+    // --- XỬ LÝ CHỌN MENU ---
     if (interaction.isStringSelectMenu()) {
         const customId = interaction.customId;
 
@@ -1025,7 +1142,6 @@ client.on('interactionCreate', async interaction => {
                 await interaction.reply({ content: 'Lỗi: Mình không thể gửi tin nhắn riêng cho bạn. Vui lòng kiểm tra cài đặt quyền riêng tư và thử lại.', ephemeral: true });
             }
         }
-        return; // Dừng lại sau khi xử lý menu
     }
 });
         
