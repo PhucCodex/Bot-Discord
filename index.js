@@ -1899,60 +1899,77 @@ client.on('interactionCreate', async interaction => {
     }
     
     if (interaction.isUserSelectMenu() && interaction.customId.startsWith('tv_select_')) {
-        await interaction.deferUpdate();
-        const voiceChannel = interaction.member.voice.channel;
-        if (!voiceChannel) return;
-        
-        const targetUser = interaction.users.first();
-        const targetMember = interaction.guild.members.cache.get(targetUser.id);
-        const action = interaction.customId.split('_')[2];
-        
-        switch(action) {
+    // Phản hồi ngay lập tức để người dùng biết bot đang xử lý
+    await interaction.deferReply({ ephemeral: true });
+
+    const voiceChannel = interaction.member.voice.channel;
+    if (!voiceChannel) {
+        return interaction.editReply({ content: 'Lỗi: Bạn không còn ở trong kênh thoại.' });
+    }
+
+    // Kiểm tra lại quyền sở hữu cho chắc chắn
+    const tempChannelInfo = db.prepare('SELECT * FROM tempvoice_channels WHERE channelId = ?').get(voiceChannel.id);
+    if (!tempChannelInfo || tempChannelInfo.ownerId !== interaction.member.id) {
+        return interaction.editReply({ content: 'Lỗi: Bạn không phải chủ sở hữu của kênh này.' });
+    }
+
+    const targetUser = interaction.users.first();
+    const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    const action = interaction.customId.split('_')[2];
+
+    try {
+        switch (action) {
             case 'kick':
                 if (targetMember && targetMember.voice.channelId === voiceChannel.id) {
-                    await targetMember.voice.disconnect('Bị kick bởi chủ kênh');
-                    await interaction.followUp({ content: `Đã kick ${targetUser} khỏi kênh.`, ephemeral: true });
+                    await targetMember.voice.disconnect(`Bị đuổi bởi chủ kênh ${interaction.member.displayName}`);
+                    await interaction.editReply({ content: `✅ Đã đuổi **${targetUser.username}** ra khỏi kênh.` });
                 } else {
-                    await interaction.followUp({ content: `${targetUser} không ở trong kênh của bạn.`, ephemeral: true });
+                    await interaction.editReply({ content: `❌ Người dùng **${targetUser.username}** không ở trong kênh của bạn.` });
                 }
                 break;
             case 'ban':
                 await voiceChannel.permissionOverwrites.edit(targetUser.id, { Connect: false });
                 if (targetMember && targetMember.voice.channelId === voiceChannel.id) {
-                    await targetMember.voice.disconnect('Bị ban khỏi kênh');
+                    await targetMember.voice.disconnect('Bị cấm vào kênh bởi chủ sở hữu');
                 }
-                await interaction.followUp({ content: `Đã chặn ${targetUser} vào kênh.`, ephemeral: true });
+                await interaction.editReply({ content: `🚫 Đã cấm **${targetUser.username}** vào kênh.` });
                 break;
             case 'unban':
+                // Chỉ cần gỡ bỏ overwrite cụ thể, không cần xóa hết
                 await voiceChannel.permissionOverwrites.edit(targetUser.id, { Connect: null });
-                await interaction.followUp({ content: `Đã bỏ chặn ${targetUser}.`, ephemeral: true });
+                await interaction.editReply({ content: `✅ Đã gỡ cấm cho **${targetUser.username}**.` });
                 break;
             case 'trust':
                 await voiceChannel.permissionOverwrites.edit(targetUser.id, { Connect: true });
-                await interaction.followUp({ content: `${targetUser} giờ đây có thể vào kênh của bạn ngay cả khi bị khóa.`, ephemeral: true });
+                await interaction.editReply({ content: `👍 **${targetUser.username}** giờ có thể vào kênh của bạn ngay cả khi bị khóa.` });
                 break;
-             case 'untrust':
-                await voiceChannel.permissionOverwrites.delete(targetUser.id);
-                await interaction.followUp({ content: `Đã xóa quyền đặc biệt của ${targetUser}.`, ephemeral: true });
+            case 'untrust':
+                // Chỉ gỡ quyền Connect, giữ lại các quyền khác nếu có
+                await voiceChannel.permissionOverwrites.edit(targetUser.id, { Connect: null });
+                await interaction.editReply({ content: `👎 Đã gỡ quyền tin tưởng của **${targetUser.username}**.` });
                 break;
             case 'transfer':
+                if (!targetMember || targetUser.bot) {
+                    return interaction.editReply({ content: '❌ Bạn không thể chuyển quyền cho bot hoặc người dùng không hợp lệ.' });
+                }
+                // Cập nhật DB
                 db.prepare('UPDATE tempvoice_channels SET ownerId = ? WHERE channelId = ?').run(targetUser.id, voiceChannel.id);
-                await voiceChannel.permissionOverwrites.edit(interaction.user.id, { ManageChannels: false, MoveMembers: false });
+                // Gỡ quyền của chủ cũ
+                await voiceChannel.permissionOverwrites.edit(interaction.user.id, { ManageChannels: null, MoveMembers: null });
+                // Thêm quyền cho chủ mới
                 await voiceChannel.permissionOverwrites.edit(targetUser.id, { ManageChannels: true, MoveMembers: true });
-                await interaction.followUp({ content: `Đã chuyển giao quyền sở hữu kênh cho ${targetUser}.`, ephemeral: true });
+                await interaction.editReply({ content: `👑 Đã chuyển giao quyền sở hữu kênh cho **${targetUser.username}**.` });
                 break;
             case 'invite':
-                try {
-                    const invite = await voiceChannel.createInvite({ maxAge: 3600, maxUses: 5, unique: true });
-                     await interaction.followUp({ content: `Đây là link mời vào kênh của bạn (có hiệu lực 1 giờ): ${invite.url}`, ephemeral: true });
-                } catch(e){
-                     await interaction.followUp({ content: 'Không thể tạo link mời cho kênh này.', ephemeral: true });
-                }
+                const invite = await voiceChannel.createInvite({ maxAge: 3600, maxUses: 5, unique: true });
+                await interaction.editReply({ content: `Đây là link mời **${targetUser.username}** vào kênh của bạn (có hiệu lực 1 giờ): ${invite.url}` });
                 break;
         }
-        // Xóa tin nhắn chọn user sau khi thực hiện
-        await interaction.deleteReply().catch(() => {});
+    } catch (error) {
+        console.error(`[LỖI TV SELECT MENU - Action: ${action}]:`, error);
+        await interaction.editReply({ content: '❌ Đã xảy ra lỗi khi thực hiện hành động. Vui lòng kiểm tra lại quyền của bot.' });
     }
+}
 
     if (interaction.isButton() && interaction.customId.startsWith('tv_')) {
         await interaction.deferUpdate().catch(() => {});
