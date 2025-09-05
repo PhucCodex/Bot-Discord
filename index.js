@@ -805,46 +805,109 @@ client.on('interactionCreate', async interaction => {
             const guildId = ids[3]; 
             const receivingChannelId = ids[4];
             
-            const modal = new ModalBuilder()
-                // customId của modal giờ chỉ cần chứa ID kênh nhận đơn
-                .setCustomId(`staff_application_modal_${receivingChannelId}`)
-                .setTitle('Đơn Đăng Ký Staff');
+            // --- CÁC CÂU HỎI ĐĂNG KÝ ---
+            // Bạn có thể thêm/bớt/sửa các câu hỏi ở đây
+            const questions = [
+                '1/6. Họ và tên đầy đủ của bạn ở ngoài đời là gì?',
+                '2/6. Ngày tháng năm sinh của bạn là gì?',
+                '3/6. Bạn có kinh nghiệm làm Staff ở server nào khác chưa? Nếu có hãy kể tên.',
+                '4/6. Bạn có thể dành bao nhiêu thời gian mỗi ngày cho server?',
+                '5/6. Tại sao bạn nghĩ mình phù hợp với vị trí này?',
+                '6/6. Bạn có câu hỏi hay đề xuất nào khác cho server không?'
+            ];
 
-            // --- Các câu hỏi trong form (giữ nguyên) ---
-            const question1 = new TextInputBuilder()
-                .setCustomId('apply_q1')
-                .setLabel("Tên trong game/Tên gọi của bạn là gì?")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
+            const answers = [];
+            const user = interaction.user;
+            const dmChannel = interaction.channel;
 
-            const question2 = new TextInputBuilder()
-                .setCustomId('apply_q2')
-                .setLabel("Bạn bao nhiêu tuổi?")
-                .setStyle(TextInputStyle.Short)
-                .setRequired(true);
+            // Vô hiệu hóa nút "Bắt đầu" sau khi bấm
+            const disabledButton = ButtonBuilder.from(interaction.component).setDisabled(true);
+            const row = new ActionRowBuilder().addComponents(disabledButton);
+            await interaction.update({ components: [row] });
 
-            const question3 = new TextInputBuilder()
-                .setCustomId('apply_q3')
-                .setLabel("Tại sao bạn muốn ứng tuyển vào vị trí Staff?")
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-            
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(question1),
-                new ActionRowBuilder().addComponents(question2),
-                new ActionRowBuilder().addComponents(question3)
-            );
+            // Thông báo bắt đầu
+            await dmChannel.send('✅ **Bắt đầu.** Vui lòng trả lời các câu hỏi bên dưới. Bạn có 5 phút cho mỗi câu trả lời.');
 
-            // Phải dùng try-catch ở đây để bắt lỗi nếu có
-            try {
-                await interaction.showModal(modal);
-            } catch (error) {
-                console.error("Lỗi khi hiển thị modal:", error);
-                // Gửi một phản hồi lỗi tới người dùng nếu có thể
-                if (!interaction.replied && !interaction.deferred) {
-                    await interaction.reply({ content: 'Đã có lỗi xảy ra khi cố gắng mở form. Vui lòng thử lại sau.', ephemeral: true });
+            // Collector để thu thập câu trả lời
+            const collector = dmChannel.createMessageCollector({
+                filter: m => m.author.id === user.id,
+                time: 300000, // 5 phút mỗi câu
+                max: questions.length
+            });
+
+            // Gửi câu hỏi đầu tiên
+            let questionIndex = 0;
+            const questionEmbed = new EmbedBuilder()
+                .setColor('Blue')
+                .setTitle('📝 Đăng kí Staff')
+                .setDescription(questions[questionIndex]);
+            await dmChannel.send({ embeds: [questionEmbed] });
+
+            collector.on('collect', message => {
+                // Lưu câu trả lời
+                answers.push(message.content);
+                questionIndex++;
+
+                // Nếu còn câu hỏi, gửi câu tiếp theo
+                if (questionIndex < questions.length) {
+                    const nextQuestionEmbed = new EmbedBuilder()
+                        .setColor('Blue')
+                        .setTitle('📝 Đăng kí Staff')
+                        .setDescription(questions[questionIndex]);
+                    dmChannel.send({ embeds: [nextQuestionEmbed] });
                 }
-            }
+            });
+
+            collector.on('end', async collected => {
+                // Kiểm tra xem đã trả lời đủ câu hỏi chưa
+                if (answers.length < questions.length) {
+                    return dmChannel.send('❌ Bạn đã không hoàn thành đơn đăng ký trong thời gian quy định. Vui lòng thử lại sau.');
+                }
+                
+                // --- GỬI ĐƠN ĐĂNG KÝ HOÀN CHỈNH VÀO KÊNH STAFF ---
+                await dmChannel.send('✅ Cảm ơn bạn! Đơn đăng ký của bạn đã được ghi nhận và sẽ được xem xét sớm.');
+                
+                const applicationEmbed = new EmbedBuilder()
+                    .setColor('Yellow') // Chờ duyệt
+                    .setTitle(`📝 Đơn đăng ký Staff mới - Chờ duyệt`)
+                    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL() })
+                    .addFields(
+                        { name: '👤 Người nộp đơn', value: user.toString(), inline: true },
+                        { name: '🆔 User ID', value: `\`${user.id}\``, inline: true },
+                        { name: '\u200B', value: '\u200B' }
+                    )
+                    .setTimestamp()
+                    .setFooter({ text: `ID Người nộp đơn: ${user.id}` });
+                
+                // Thêm các câu trả lời vào embed
+                questions.forEach((question, index) => {
+                    applicationEmbed.addFields({ name: `Câu hỏi: ${question}`, value: `\`\`\`${answers[index] || 'Không có câu trả lời'}\`\`\`` });
+                });
+                
+                // --- TẠO NÚT CHẤP THUẬN / TỪ CHỐI ---
+                const acceptButton = new ButtonBuilder()
+                    .setCustomId(`accept_application_${user.id}_${guildId}`) // Thêm guildId vào đây
+                    .setLabel('Chấp thuận')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('✅');
+
+                const rejectButton = new ButtonBuilder()
+                    .setCustomId(`reject_application_${user.id}_${guildId}`) // Thêm guildId vào đây
+                    .setLabel('Từ chối')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('❌');
+                
+                const buttonRow = new ActionRowBuilder().addComponents(acceptButton, rejectButton);
+
+                try {
+                    const receivingChannel = await client.channels.fetch(receivingChannelId);
+                    if (receivingChannel) {
+                        await receivingChannel.send({ embeds: [applicationEmbed], components: [buttonRow] });
+                    }
+                } catch (error) {
+                    console.error("Lỗi khi gửi đơn vào kênh staff:", error);
+                }
+            });
         }
         
     }
