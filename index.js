@@ -1512,49 +1512,48 @@ client.on('interactionCreate', async interaction => {
                     const creatorChannel = interaction.options.getChannel('create_channel');
                     const category = interaction.options.getChannel('category');
                     const panelChannel = interaction.options.getChannel('control_panel_channel');
-                    // --- THÊM MỚI: Lấy URL hình ảnh ---
                     const imageUrl = interaction.options.getString('hinh_anh');
 
-                    try {
-                        db.prepare('INSERT OR REPLACE INTO tempvoice_settings (guildId, creatorChannelId, categoryId, panelChannelId) VALUES (?, ?, ?, ?)')
+                    db.prepare('INSERT OR REPLACE INTO tempvoice_settings (guildId, creatorChannelId, categoryId, panelChannelId) VALUES (?, ?, ?, ?)')
                         .run(guild.id, creatorChannel.id, category.id, panelChannel.id);
-                    } catch(e) {
-                        console.error("Lỗi khi setup tempvoice:", e);
-                        return interaction.followUp({ content: 'Đã xảy ra lỗi với database khi đang cài đặt. Vui lòng kiểm tra console.'});
-                    }
                     
-                    // --- THÊM MỚI: Gửi hình ảnh nếu có ---
                     if (imageUrl) {
-                        try {
-                            await panelChannel.send({ files: [imageUrl] });
-                        } catch (error) {
-                            console.error("Lỗi khi gửi ảnh TempVoice Panel:", error);
-                            await interaction.followUp({ content: '⚠️ Lỗi: Không thể gửi hình ảnh. Vui lòng kiểm tra lại URL.' });
-                            // Vẫn tiếp tục thực thi dù ảnh lỗi
-                        }
+                        await panelChannel.send({ files: [imageUrl] }).catch(e => console.error("Lỗi gửi ảnh TempVoice Panel:", e));
                     }
 
                     const embed = new EmbedBuilder()
                         .setColor('#5865F2')
                         .setTitle('TempVoice Interface')
-                        .setDescription(
-                            'Giao diện này có thể được sử dụng để quản lý các kênh thoại tạm thời. Nhiều tùy chọn hơn có sẵn với lệnh `/voice commands`.'
-                        )
-                        .setFooter({ text: 'Nhấn các nút bên dưới để sử dụng giao diện' });
+                        .setDescription('Giao diện này có thể được sử dụng để quản lý các kênh thoại tạm thời. Nhiều tùy chọn hơn có sẵn với lệnh `/voice commands`.')
+                        .setFooter({ text: 'Nhấn các nút bên dưới hoặc dùng menu để sử dụng giao diện' });
 
-                    // --- ĐÃ SỬA: Tất cả các nút đổi thành ButtonStyle.Secondary ---
-                    
-                    // Hàng nút 1
+                    // --- BẮT ĐẦU NÂNG CẤP GIAO DIỆN TEMPVOICE ---
+
+                    // Hàng nút 1 (Nút Rename, Limit, AFK, Topic)
                     const row1 = new ActionRowBuilder()
                         .addComponents(
                             new ButtonBuilder().setCustomId('tv_rename').setEmoji('✏️').setStyle(ButtonStyle.Secondary),
                             new ButtonBuilder().setCustomId('tv_limit').setEmoji('👥').setStyle(ButtonStyle.Secondary),
-                            new ButtonBuilder().setCustomId('tv_privacy').setEmoji('🛡️').setStyle(ButtonStyle.Secondary),
                             new ButtonBuilder().setCustomId('tv_afk').setEmoji('🕒').setStyle(ButtonStyle.Secondary),
                             new ButtonBuilder().setCustomId('tv_topic').setEmoji('#️⃣').setStyle(ButtonStyle.Secondary)
                         );
-                    // Hàng nút 2
+                    
+                    // Hàng 2: MENU RIÊNG TƯ & HIỂN THỊ
                     const row2 = new ActionRowBuilder()
+                        .addComponents(
+                            new StringSelectMenuBuilder()
+                                .setCustomId('tv_privacy_menu')
+                                .setPlaceholder('🛡️ Tùy chọn Riêng tư & Hiển thị')
+                                .addOptions(
+                                    { label: 'Khóa Kênh', description: 'Chỉ người được mời hoặc tin tưởng mới có thể vào.', value: 'lock', emoji: '🔒' },
+                                    { label: 'Mở Khóa Kênh', description: 'Bất kỳ ai cũng có thể tham gia kênh.', value: 'unlock', emoji: '🔓' },
+                                    { label: 'Ẩn Kênh', description: 'Chỉ người có link hoặc quyền mới thấy kênh.', value: 'hide', emoji: '👻' },
+                                    { label: 'Hiện Kênh', description: 'Mọi người trong server đều có thể thấy kênh.', value: 'show', emoji: '👀' }
+                                )
+                        );
+
+                    // Hàng nút 3 (Trust, Untrust, Invite, Kick)
+                    const row3 = new ActionRowBuilder()
                         .addComponents(
                             new ButtonBuilder().setCustomId('tv_trust').setEmoji('✅').setStyle(ButtonStyle.Secondary),
                             new ButtonBuilder().setCustomId('tv_untrust').setEmoji('❌').setStyle(ButtonStyle.Secondary),
@@ -1562,8 +1561,9 @@ client.on('interactionCreate', async interaction => {
                             new ButtonBuilder().setCustomId('tv_kick').setEmoji('📞').setStyle(ButtonStyle.Secondary),
                             new ButtonBuilder().setCustomId('tv_region').setEmoji('🌍').setStyle(ButtonStyle.Secondary).setDisabled(true)
                         );
-                    // Hàng nút 3
-                    const row3 = new ActionRowBuilder()
+                        
+                    // Hàng nút 4 (Ban, Unban, Claim, Transfer, Delete)
+                    const row4 = new ActionRowBuilder()
                         .addComponents(
                             new ButtonBuilder().setCustomId('tv_ban').setEmoji('🚫').setStyle(ButtonStyle.Secondary),
                             new ButtonBuilder().setCustomId('tv_unban').setEmoji('🔰').setStyle(ButtonStyle.Secondary),
@@ -1572,7 +1572,9 @@ client.on('interactionCreate', async interaction => {
                             new ButtonBuilder().setCustomId('tv_delete').setEmoji('🗑️').setStyle(ButtonStyle.Secondary)
                         );
 
-                    await panelChannel.send({ embeds: [embed], components: [row1, row2, row3] });
+                    // --- KẾT THÚC NÂNG CẤP GIAO DIỆN ---
+
+                    await panelChannel.send({ embeds: [embed], components: [row1, row2, row3, row4] });
                     await interaction.followUp({ content: `✅ Đã cài đặt thành công hệ thống Temp Voice! Bảng điều khiển đã được gửi tới ${panelChannel}.` });
                 }
             }
@@ -1711,6 +1713,47 @@ client.on('interactionCreate', async interaction => {
     }
 }
 
+    // --- BỔ SUNG: XỬ LÝ MENU RIÊNG TƯ CỦA TEMPVOICE ---
+    if (interaction.isStringSelectMenu() && interaction.customId === 'tv_privacy_menu') {
+        await interaction.deferReply({ ephemeral: true });
+
+        const { member, guild } = interaction;
+        const voiceChannel = member.voice.channel;
+
+        if (!voiceChannel) {
+            return interaction.followUp({ content: '❌ Bạn phải đang ở trong kênh thoại để dùng menu này.' });
+        }
+        const tempChannelInfo = db.prepare('SELECT * FROM tempvoice_channels WHERE channelId = ?').get(voiceChannel.id);
+        if (!tempChannelInfo || tempChannelInfo.ownerId !== member.id) {
+            return interaction.followUp({ content: '❌ Bạn không phải chủ kênh này hoặc đây không phải kênh tạm thời.' });
+        }
+
+        const selection = interaction.values[0];
+        try {
+            switch (selection) {
+                case 'lock':
+                    await voiceChannel.permissionOverwrites.edit(guild.id, { Connect: false });
+                    await interaction.followUp({ content: '🔒 Kênh đã được khóa.' });
+                    break;
+                case 'unlock':
+                    await voiceChannel.permissionOverwrites.edit(guild.id, { Connect: null });
+                    await interaction.followUp({ content: '🔓 Kênh đã được mở khóa.' });
+                    break;
+                case 'hide':
+                    await voiceChannel.permissionOverwrites.edit(guild.id, { ViewChannel: false });
+                    await interaction.followUp({ content: '👻 Kênh đã được ẩn. Chỉ những người có quyền mới thấy.' });
+                    break;
+                case 'show':
+                    await voiceChannel.permissionOverwrites.edit(guild.id, { ViewChannel: null });
+                    await interaction.followUp({ content: '👀 Kênh đã được hiện lại cho mọi người.' });
+                    break;
+            }
+        } catch (error) {
+            console.error('[LỖI TEMPVOICE MENU]:', error);
+            await interaction.followUp({ content: '❌ Đã có lỗi xảy ra. Hãy chắc chắn tôi có đủ quyền hạn nhé.' });
+        }
+    }
+
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'select_ticket_category') {
             await interaction.deferReply({ ephemeral: true });
@@ -1795,6 +1838,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
         
+        // --- ĐOẠN CODE ĐƯỢC NÂNG CẤP VỚI TRY...CATCH ĐỂ SỬA LỖI ---
         if (interaction.customId.startsWith('tv_modal_')) {
             await interaction.deferReply({ ephemeral: true });
             const voiceChannel = interaction.member.voice.channel;
@@ -1802,28 +1846,34 @@ client.on('interactionCreate', async interaction => {
 
             const action = interaction.customId.split('_')[2];
             
-            switch(action) {
-                case 'rename': {
-                    const newName = interaction.fields.getTextInputValue('nameInput');
-                    await voiceChannel.setName(newName);
-                    await interaction.followUp({ content: `Đã đổi tên kênh thành **${newName}**.` });
-                    break;
-                }
-                case 'limit': {
-                    const newLimit = parseInt(interaction.fields.getTextInputValue('limitInput'));
-                    if (isNaN(newLimit) || newLimit < 0 || newLimit > 99) {
-                        return interaction.followUp({ content: 'Vui lòng nhập một số hợp lệ từ 0 đến 99.' });
+            try { // Bắt đầu khối try...catch để bắt lỗi
+                switch(action) {
+                    case 'rename': {
+                        const newName = interaction.fields.getTextInputValue('nameInput');
+                        await voiceChannel.setName(newName);
+                        await interaction.followUp({ content: `✅ Đã đổi tên kênh thành **${newName}**.` });
+                        break;
                     }
-                    await voiceChannel.setUserLimit(newLimit);
-                    await interaction.followUp({ content: `Đã đặt giới hạn thành viên là **${newLimit === 0 ? 'Không giới hạn' : newLimit}**.` });
-                    break;
+                    case 'limit': {
+                        const newLimit = parseInt(interaction.fields.getTextInputValue('limitInput'));
+                        if (isNaN(newLimit) || newLimit < 0 || newLimit > 99) {
+                            return interaction.followUp({ content: 'Vui lòng nhập một số hợp lệ từ 0 đến 99.' });
+                        }
+                        await voiceChannel.setUserLimit(newLimit);
+                        await interaction.followUp({ content: `✅ Đã đặt giới hạn thành viên là **${newLimit === 0 ? 'Không giới hạn' : newLimit}**.` });
+                        break;
+                    }
+                    case 'topic': {
+                        const newTopic = interaction.fields.getTextInputValue('topicInput');
+                        await voiceChannel.setStatus(newTopic);
+                        await interaction.followUp({ content: `✅ Đã đặt chủ đề kênh thành công.` });
+                        break;
+                    }
                 }
-                case 'topic': {
-                    const newTopic = interaction.fields.getTextInputValue('topicInput');
-                    await voiceChannel.setStatus(newTopic);
-                    await interaction.followUp({ content: `Đã đặt chủ đề kênh thành công.` });
-                    break;
-                }
+            } catch (error) {
+                // Nếu có lỗi, in ra console và báo cho người dùng
+                console.error(`[LỖI TEMPVOICE MODAL]: Không thể thực hiện hành động '${action}'.`, error);
+                await interaction.followUp({ content: `❌ Đã xảy ra lỗi! Vui lòng kiểm tra console của bot hoặc đảm bảo tôi có đủ quyền hạn (Manage Channels) và vai trò của tôi cao hơn vai trò của bạn.` });
             }
         }
     }
@@ -1927,14 +1977,8 @@ client.on('interactionCreate', async interaction => {
                 await interaction.showModal(modal);
                 break;
             }
-            case 'privacy': {
-                const isLocked = voiceChannel.permissionOverwrites.cache.get(interaction.guild.id)?.deny.has(PermissionFlagsBits.Connect);
-                await voiceChannel.permissionOverwrites.edit(interaction.guild.id, {
-                    Connect: isLocked ? null : false 
-                });
-                await interaction.followUp({ content: `Đã **${isLocked ? 'mở khóa' : 'khóa'}** kênh.`, ephemeral: true });
-                break;
-            }
+            // Logic nút privacy cũ đã được thay thế bằng menu, có thể xóa hoặc giữ lại làm dự phòng
+            // case 'privacy': { ... }
             case 'hide': {
                 const isHidden = voiceChannel.permissionOverwrites.cache.get(interaction.guild.id)?.deny.has(PermissionFlagsBits.ViewChannel);
                  await voiceChannel.permissionOverwrites.edit(interaction.guild.id, {
