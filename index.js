@@ -1715,42 +1715,62 @@ client.on('interactionCreate', async interaction => {
 
     // --- BỔ SUNG: XỬ LÝ MENU RIÊNG TƯ CỦA TEMPVOICE ---
     if (interaction.isStringSelectMenu() && interaction.customId === 'tv_privacy_menu') {
+        console.log('\n[DEBUG] 1. Nhận được tương tác từ menu privacy.');
+
         await interaction.deferReply({ ephemeral: true });
 
         const { member, guild } = interaction;
         const voiceChannel = member.voice.channel;
 
         if (!voiceChannel) {
+            console.log('[DEBUG] LỖI: Người dùng không ở trong kênh thoại.');
             return interaction.followUp({ content: '❌ Bạn phải đang ở trong kênh thoại để dùng menu này.' });
         }
+        console.log(`[DEBUG] 2. Người dùng đang ở trong kênh: "${voiceChannel.name}" (ID: ${voiceChannel.id})`);
+
         const tempChannelInfo = db.prepare('SELECT * FROM tempvoice_channels WHERE channelId = ?').get(voiceChannel.id);
-        if (!tempChannelInfo || tempChannelInfo.ownerId !== member.id) {
-            return interaction.followUp({ content: '❌ Bạn không phải chủ kênh này hoặc đây không phải kênh tạm thời.' });
+        console.log('[DEBUG] 3. Kết quả tìm kênh trong DB:', tempChannelInfo);
+        
+        if (!tempChannelInfo) {
+            console.log('[DEBUG] LỖI: Không tìm thấy kênh trong DB hoặc kênh không phải là kênh tạm thời.');
+             return interaction.followUp({ content: '❌ Đây không phải là kênh thoại tạm thời được quản lý bởi bot.' });
         }
 
+        if (tempChannelInfo.ownerId !== member.id) {
+            console.log(`[DEBUG] LỖI: Sai chủ sở hữu. Chủ kênh trong DB: ${tempChannelInfo.ownerId}. Người tương tác: ${member.id}`);
+            return interaction.followUp({ content: '❌ Bạn không phải chủ kênh này.' });
+        }
+        console.log('[DEBUG] 4. Xác nhận chủ sở hữu thành công.');
+
         const selection = interaction.values[0];
+        console.log(`[DEBUG] 5. Người dùng đã chọn: "${selection}"`);
+        
         try {
             switch (selection) {
                 case 'lock':
                     await voiceChannel.permissionOverwrites.edit(guild.id, { Connect: false });
+                    console.log('[DEBUG] 6. Đã thực hiện hành động khóa kênh.');
                     await interaction.followUp({ content: '🔒 Kênh đã được khóa.' });
                     break;
                 case 'unlock':
                     await voiceChannel.permissionOverwrites.edit(guild.id, { Connect: null });
+                    console.log('[DEBUG] 6. Đã thực hiện hành động mở khóa kênh.');
                     await interaction.followUp({ content: '🔓 Kênh đã được mở khóa.' });
                     break;
                 case 'hide':
                     await voiceChannel.permissionOverwrites.edit(guild.id, { ViewChannel: false });
+                    console.log('[DEBUG] 6. Đã thực hiện hành động ẩn kênh.');
                     await interaction.followUp({ content: '👻 Kênh đã được ẩn. Chỉ những người có quyền mới thấy.' });
                     break;
                 case 'show':
                     await voiceChannel.permissionOverwrites.edit(guild.id, { ViewChannel: null });
+                    console.log('[DEBUG] 6. Đã thực hiện hành động hiện kênh.');
                     await interaction.followUp({ content: '👀 Kênh đã được hiện lại cho mọi người.' });
                     break;
             }
         } catch (error) {
-            console.error('[LỖI TEMPVOICE MENU]:', error);
-            await interaction.followUp({ content: '❌ Đã có lỗi xảy ra. Hãy chắc chắn tôi có đủ quyền hạn nhé.' });
+            console.error('[DEBUG] LỖI NGHIÊM TRỌNG KHI THAY ĐỔI QUYỀN:', error);
+            await interaction.followUp({ content: '❌ Đã có lỗi xảy ra khi thay đổi quyền. Lỗi đã được ghi lại trong console.' });
         }
     }
 
