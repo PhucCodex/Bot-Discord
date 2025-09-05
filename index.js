@@ -801,6 +801,8 @@ client.on('interactionCreate', async interaction => {
         }
 
         client.on('interactionCreate', async interaction => {
+
+    // --- XỬ LÝ NỘP FORM (MODAL) ---
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('feedbackModal_')) {
             const channelId = interaction.customId.split('_')[1];
@@ -818,12 +820,13 @@ client.on('interactionCreate', async interaction => {
                 }
             } catch (error) {
                 console.error("Lỗi khi gửi feedback:", error);
-                await interaction.reply({ content: 'Đã có lỗi xảy ra. Có thể tôi không có quyền gửi tin nhắn vào kênh đó.', ephemeral: true });
+                await interaction.reply({ content: 'Đã có lỗi xảy ra khi gửi tin nhắn.', ephemeral: true });
             }
         }
-        return;
+        return; // Dừng lại sau khi xử lý modal
     }
 
+    // --- XỬ LÝ BẤM NÚT ---
     if (interaction.isButton()) {
         const customId = interaction.customId;
 
@@ -836,11 +839,7 @@ client.on('interactionCreate', async interaction => {
                     { label: 'Liên hệ Admin', description: 'Liên hệ với em Phúc.', value: 'admin_contact', emoji: '<a:Purp_Alert:1413004990037098547>' }
                 ]);
             const row = new ActionRowBuilder().addComponents(selectMenu);
-            await interaction.reply({
-                content: '**Bạn cần hỗ trợ về vấn đề gì? Hãy chọn ở danh sách dưới nhé ! <:PridecordWarning:1412665674026717207> **',
-                components: [row],
-                ephemeral: true 
-            });
+            await interaction.reply({ content: '**Bạn cần hỗ trợ về vấn đề gì? Hãy chọn ở danh sách dưới nhé ! <:PridecordWarning:1412665674026717207> **', components: [row], ephemeral: true });
         }
         else if (customId === 'close_ticket') {
             if (!interaction.member.roles.cache.has(SUPPORT_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -850,59 +849,38 @@ client.on('interactionCreate', async interaction => {
             interaction.channel.delete().catch(err => console.error("Không thể xóa kênh ticket:", err));
         }
         else if (customId.startsWith('open_feedback_form_')) {
-            const feedbackChannelId = customId.split('_')[3]; 
-            const modal = new ModalBuilder()
-                .setCustomId(`feedbackModal_${feedbackChannelId}`)
-                .setTitle('Gửi phản hồi cho Phúc');
+            const feedbackChannelId = customId.split('_')[3];
+            const modal = new ModalBuilder().setCustomId(`feedbackModal_${feedbackChannelId}`).setTitle('Gửi phản hồi cho Phúc');
             const tieuDeInput = new TextInputBuilder().setCustomId('tieuDeInput').setLabel("Tên của bạn ?").setStyle(TextInputStyle.Short).setPlaceholder('Ghi ở đây !').setRequired(true);
             const noiDungInput = new TextInputBuilder().setCustomId('noiDungInput').setLabel("Nội dung").setStyle(TextInputStyle.Paragraph).setPlaceholder('Bạn muốn nói điều gì ? Hãy ghi ở đây !').setRequired(true).setMinLength(10);
             const danhGiaInput = new TextInputBuilder().setCustomId('danhGiaInput').setLabel("Nội dung 2").setStyle(TextInputStyle.Paragraph).setPlaceholder('Bạn muốn nói điều gì ? Hãy ghi ở đây ! Không có thì bỏ trống.').setRequired(false);
             modal.addComponents(new ActionRowBuilder().addComponents(tieuDeInput), new ActionRowBuilder().addComponents(noiDungInput), new ActionRowBuilder().addComponents(danhGiaInput));
             await interaction.showModal(modal);
         }
-
-        // --- BẮT ĐẦU QUY TRÌNH HỎI-ĐÁP, BỎ GIỚI HẠN THỜI GIAN ---
         else if (customId.startsWith('start_application_form_')) {
             const ids = customId.split('_');
-            const guildId = ids[3]; 
+            const guildId = ids[3];
             const receivingChannelId = ids[4];
-            
-            const questions = [
-                '1/6. Họ và tên đầy đủ của bạn ở ngoài đời là gì?',
-                '2/6. Ngày tháng năm sinh của bạn là gì?',
-                '3/6. Bạn có kinh nghiệm làm Staff ở server nào khác chưa? Nếu có hãy kể tên.',
-                '4/6. Bạn có thể dành bao nhiêu thời gian mỗi ngày cho server?',
-                '5/6. Tại sao bạn nghĩ mình phù hợp với vị trí này?',
-                '6/6. Bạn có câu hỏi hay đề xuất nào khác cho server không?'
-            ];
+            const questions = ['1/6. Họ và tên đầy đủ của bạn ở ngoài đời là gì?', '2/6. Ngày tháng năm sinh của bạn là gì?', '3/6. Bạn có kinh nghiệm làm Staff ở server nào khác chưa? Nếu có hãy kể tên.', '4/6. Bạn có thể dành bao nhiêu thời gian mỗi ngày cho server?', '5/6. Tại sao bạn nghĩ mình phù hợp với vị trí này?', '6/6. Bạn có câu hỏi hay đề xuất nào khác cho server không?'];
             const answers = [];
             const user = interaction.user;
             const dmChannel = interaction.channel;
-            
             const disabledStartButton = ButtonBuilder.from(interaction.component).setDisabled(true);
             const disabledCancelButton = ButtonBuilder.from(interaction.message.components[0].components[1]).setDisabled(true);
             const row = new ActionRowBuilder().addComponents(disabledStartButton, disabledCancelButton);
             await interaction.update({ components: [row] });
-
             await dmChannel.send('✅ **Bắt đầu.** Vui lòng trả lời lần lượt các câu hỏi bên dưới.\n*Gõ `cancel` để hủy bỏ bất cứ lúc nào.*');
-
-            const collector = dmChannel.createMessageCollector({
-                filter: m => m.author.id === user.id
-            });
-
+            const collector = dmChannel.createMessageCollector({ filter: m => m.author.id === user.id });
             let questionIndex = 0;
             const questionEmbed = new EmbedBuilder().setColor('Blue').setTitle('📝 Đăng kí Staff').setDescription(questions[questionIndex]);
             await dmChannel.send({ embeds: [questionEmbed] });
-
             collector.on('collect', message => {
                 if (message.content.toLowerCase() === 'cancel') {
                     collector.stop('cancelled');
                     return;
                 }
-                
                 answers.push(message.content);
                 questionIndex++;
-
                 if (questionIndex < questions.length) {
                     const nextQuestionEmbed = new EmbedBuilder().setColor('Blue').setTitle('📝 Đăng kí Staff').setDescription(questions[questionIndex]);
                     dmChannel.send({ embeds: [nextQuestionEmbed] });
@@ -910,33 +888,17 @@ client.on('interactionCreate', async interaction => {
                     collector.stop('completed');
                 }
             });
-
             collector.on('end', async (collected, reason) => {
-                if (reason === 'cancelled') {
-                    return dmChannel.send('❌ Bạn đã hủy quá trình đăng ký.');
-                }
-                
+                if (reason === 'cancelled') return dmChannel.send('❌ Bạn đã hủy quá trình đăng ký.');
                 if (reason !== 'completed') return;
-                
                 await dmChannel.send('✅ Cảm ơn bạn! Đơn đăng ký của bạn đã được ghi nhận và sẽ được xem xét sớm.');
-                
-                const applicationEmbed = new EmbedBuilder()
-                    .setColor('Yellow').setTitle(`📝 Đơn đăng ký Staff mới - Chờ duyệt`)
-                    .setAuthor({ name: user.tag, iconURL: user.displayAvatarURL() })
-                    .addFields(
-                        { name: '👤 Người nộp đơn', value: user.toString(), inline: true },
-                        { name: '🆔 User ID', value: `\`${user.id}\``, inline: true },
-                        { name: '\u200B', value: '\u200B' }
-                    ).setTimestamp().setFooter({ text: `ID Người nộp đơn: ${user.id}` });
-                
+                const applicationEmbed = new EmbedBuilder().setColor('Yellow').setTitle(`📝 Đơn đăng ký Staff mới - Chờ duyệt`).setAuthor({ name: user.tag, iconURL: user.displayAvatarURL() }).addFields({ name: '👤 Người nộp đơn', value: user.toString(), inline: true }, { name: '🆔 User ID', value: `\`${user.id}\``, inline: true }, { name: '\u200B', value: '\u200B' }).setTimestamp().setFooter({ text: `ID Người nộp đơn: ${user.id}` });
                 questions.forEach((question, index) => {
                     applicationEmbed.addFields({ name: `Câu hỏi: ${question}`, value: `\`\`\`${answers[index] || 'Không có câu trả lời'}\`\`\`` });
                 });
-                
                 const acceptButton = new ButtonBuilder().setCustomId(`accept_application_${user.id}_${guildId}`).setLabel('Chấp thuận').setStyle(ButtonStyle.Success).setEmoji('✅');
                 const rejectButton = new ButtonBuilder().setCustomId(`reject_application_${user.id}_${guildId}`).setLabel('Từ chối').setStyle(ButtonStyle.Danger).setEmoji('❌');
                 const buttonRow = new ActionRowBuilder().addComponents(acceptButton, rejectButton);
-
                 try {
                     const receivingChannel = await client.channels.fetch(receivingChannelId);
                     if (receivingChannel) {
@@ -945,68 +907,51 @@ client.on('interactionCreate', async interaction => {
                 } catch (error) { console.error("Lỗi khi gửi đơn vào kênh staff:", error); }
             });
         }
-        
-        // --- XỬ LÝ NÚT HỦY MỚI ---
         else if (customId === 'cancel_application') {
-            await interaction.update({
-                content: '❌ Quá trình đăng ký đã được hủy. Bạn có thể bắt đầu lại từ server khi nào sẵn sàng.',
-                components: []
-            });
+            await interaction.update({ content: '❌ Quá trình đăng ký đã được hủy. Bạn có thể bắt đầu lại từ server khi nào sẵn sàng.', components: [] });
         }
-        
-        // --- SỬA LỖI CÁC NÚT CHẤP THUẬN / TỪ CHỐI ---
         else if (customId.startsWith('accept_application_')) {
             if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: 'Bạn không có quyền thực hiện hành động này.', ephemeral: true });
             }
             await interaction.deferUpdate();
-
             const ids = customId.split('_');
             const applicantId = ids[2];
             const guildId = ids[3];
-
             const guild = await client.guilds.fetch(guildId).catch(() => null);
             if (!guild) return console.error(`Không tìm thấy server với ID: ${guildId}`);
-
             const applicantMember = await guild.members.fetch(applicantId).catch(() => null);
-
             if (!applicantMember) return interaction.followUp({ content: 'Lỗi: Không tìm thấy thành viên này trong server.', ephemeral: true });
-            
             const staffRole = guild.roles.cache.get(STAFF_ROLE_ID);
             if (staffRole) await applicantMember.roles.add(staffRole);
-
             await applicantMember.send(`🎉 Chúc mừng! Đơn đăng ký Staff của bạn tại server **${guild.name}** đã được chấp thuận.`).catch(() => {});
-
             const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]).setColor('Green').setTitle(`✅ Đã được chấp thuận bởi ${interaction.user.tag}`);
             await interaction.editReply({ embeds: [originalEmbed], components: [] });
         }
-
         else if (customId.startsWith('reject_application_')) {
             if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: 'Bạn không có quyền thực hiện hành động này.', ephemeral: true });
             }
             await interaction.deferUpdate();
-
             const ids = customId.split('_');
             const applicantId = ids[2];
             const guildId = ids[3];
-
             const guild = await client.guilds.fetch(guildId).catch(() => null);
             if (!guild) return console.error(`Không tìm thấy server với ID: ${guildId}`);
-
             const applicantMember = await guild.members.fetch(applicantId).catch(() => null);
-
             if (applicantMember) {
                  await applicantMember.send(`😔 Rất tiếc, đơn đăng ký Staff của bạn tại server **${guild.name}** đã bị từ chối. Cảm ơn bạn đã quan tâm.`).catch(() => {});
             }
-
             const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]).setColor('Red').setTitle(`❌ Đã bị từ chối bởi ${interaction.user.tag}`);
             await interaction.editReply({ embeds: [originalEmbed], components: [] });
         }
-        return;
+        return; // Dừng lại sau khi xử lý nút
     }
     
     if (interaction.isChatInputCommand()) {
+
+        if (!interaction.inGuild()) return;
+
         const { commandName, user, guild } = interaction;
     
         if (commandName === 'applysetup') {
@@ -1049,10 +994,8 @@ client.on('interactionCreate', async interaction => {
             const selectedValue = interaction.values[0];
             let categoryId, ticketType, welcomeMessage, ticketContent;
             switch (selectedValue) {
-                case 'technical_support':
-                    categoryId = SUPPORT_TICKET_CATEGORY_ID; ticketType = 'hỗ-trợ'; welcomeMessage = `Hỗ trợ bạn về vấn đề **Kỹ thuật/Chung**. Vui lòng trình bày chi tiết vấn đề bạn đang gặp phải.`; ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`; break;
-                case 'admin_contact':
-                    categoryId = ADMIN_TICKET_CATEGORY_ID; ticketType = 'admin'; welcomeMessage = `**Cần alo ngay em Phúc**`; ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ về vấn đề gì hoặc khiếu nại thì cứ ghi vào nhé**`; break;
+                case 'technical_support': categoryId = SUPPORT_TICKET_CATEGORY_ID; ticketType = 'hỗ-trợ'; welcomeMessage = `Hỗ trợ bạn về vấn đề **Kỹ thuật/Chung**.`; ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`; break;
+                case 'admin_contact': categoryId = ADMIN_TICKET_CATEGORY_ID; ticketType = 'admin'; welcomeMessage = `**Cần alo ngay em Phúc**`; ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ gì ạ**`; break;
                 default: return interaction.followUp({ content: 'Lựa chọn không hợp lệ.' });
             }
             let ticketCounter = parseInt(db.prepare(`SELECT value FROM settings WHERE key = ?`).get('ticketCounter').value);
@@ -1066,18 +1009,14 @@ client.on('interactionCreate', async interaction => {
                 const row = new ActionRowBuilder().addComponents(closeButton);
                 await ticketChannel.send({ content: ticketContent, embeds: [ticketWelcomeEmbed], components: [row] });
                 await interaction.followUp({ content: `Đã tạo ticket của bạn tại ${ticketChannel}.` });
-            } catch (error) { console.error("Lỗi khi tạo ticket theo danh mục:", error); await interaction.followUp({ content: 'Đã xảy ra lỗi. Vui lòng kiểm tra lại các ID Category đã khai báo và quyền của bot.' }); }
-        } 
-        
-        // --- GỬI DM VỚI 2 NÚT (BẮT ĐẦU / HỦY) ---
+            } catch (error) { console.error("Lỗi khi tạo ticket theo danh mục:", error); await interaction.followUp({ content: 'Đã xảy ra lỗi.' }); }
+        }
         else if (customId.startsWith('staff_apply_menu_')) {
             const receivingChannelId = customId.split('_')[3];
             const guildId = interaction.guild.id;
-
             const startButton = new ButtonBuilder().setCustomId(`start_application_form_${guildId}_${receivingChannelId}`).setLabel('Bắt đầu điền Form').setStyle(ButtonStyle.Primary).setEmoji('📝');
             const cancelButton = new ButtonBuilder().setCustomId('cancel_application').setLabel('Hủy').setStyle(ButtonStyle.Danger).setEmoji('❌');
             const row = new ActionRowBuilder().addComponents(startButton, cancelButton);
-
             try {
                 await interaction.user.send({ content: `Chào bạn, để bắt đầu quá trình đăng ký Staff tại server **${interaction.guild.name}**, vui lòng bấm nút bên dưới.`, components: [row] });
                 await interaction.reply({ content: 'Mình đã gửi hướng dẫn đăng ký vào tin nhắn riêng (DM) của bạn. Hãy kiểm tra nhé!', ephemeral: true });
@@ -1086,7 +1025,7 @@ client.on('interactionCreate', async interaction => {
                 await interaction.reply({ content: 'Lỗi: Mình không thể gửi tin nhắn riêng cho bạn. Vui lòng kiểm tra cài đặt quyền riêng tư và thử lại.', ephemeral: true });
             }
         }
-        return;
+        return; // Dừng lại sau khi xử lý menu
     }
 });
         
