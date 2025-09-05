@@ -1,8 +1,10 @@
 # nixpacks.toml
 
 [phases.setup]
-# Thêm các gói hệ thống cần thiết để build better-sqlite3
-aptPkgs = ["python3", "pkg-config", "build-essential"]
+# Thêm các gói hệ thống cần thiết.
+# - python3, pkg-config, build-essential: cho better-sqlite3
+# - ffmpeg, libsodium-dev: cho chức năng phát nhạc của bot
+aptPkgs = ["python3", "pkg-config", "build-essential", "ffmpeg", "libsodium-dev"]
 
 [start]
 # Lệnh để chạy bot của bạn
