@@ -485,6 +485,7 @@ async function playSong(guild, song) {
 
     if (!song) {
         // Nếu không còn bài hát nào, rời kênh thoại sau 1 phút và xóa hàng đợi
+        serverQueue.textChannel.send('🎶 Hàng đợi đã hết, tôi sẽ rời kênh thoại sau 1 phút nữa.');
         setTimeout(() => {
             const currentQueue = queue.get(guild.id);
             // Kiểm tra lại xem có bài hát nào được thêm vào trong lúc chờ không
@@ -496,27 +497,39 @@ async function playSong(guild, song) {
         return;
     }
 
-    // Tạo luồng âm thanh từ youtube
-    const stream = await play.stream(song.url);
-    const resource = createAudioResource(stream.stream, { inputType: stream.type });
-    
-    // Phát nhạc
-    serverQueue.player.play(resource);
-    serverQueue.playing = true;
-
-    // Gửi thông báo đang phát nhạc
-    const nowPlayingEmbed = new EmbedBuilder()
-        .setColor('Green')
-        .setTitle('🎵 Đang phát')
-        .setDescription(`**[${song.title}](${song.url})**`)
-        .setThumbnail(song.thumbnail)
-        .addFields(
-            { name: 'Thời lượng', value: song.duration, inline: true },
-            { name: 'Yêu cầu bởi', value: song.requestedBy.toString(), inline: true }
-        )
-        .setTimestamp();
+    // --- BẮT ĐẦU KHỐI TRY...CATCH ---
+    try {
+        // Tạo luồng âm thanh từ youtube
+        const stream = await play.stream(song.url);
+        const resource = createAudioResource(stream.stream, { inputType: stream.type });
         
-    await serverQueue.textChannel.send({ embeds: [nowPlayingEmbed] });
+        // Phát nhạc
+        serverQueue.player.play(resource);
+        serverQueue.playing = true;
+
+        // Gửi thông báo đang phát nhạc
+        const nowPlayingEmbed = new EmbedBuilder()
+            .setColor('Green')
+            .setTitle('🎵 Đang phát')
+            .setDescription(`**[${song.title}](${song.url})**`)
+            .setThumbnail(song.thumbnail)
+            .addFields(
+                { name: 'Thời lượng', value: song.duration, inline: true },
+                { name: 'Yêu cầu bởi', value: song.requestedBy.toString(), inline: true }
+            )
+            .setTimestamp();
+            
+        await serverQueue.textChannel.send({ embeds: [nowPlayingEmbed] });
+
+    } catch (error) {
+        // --- XỬ LÝ KHI CÓ LỖI ---
+        console.error(`Lỗi khi phát bài hát "${song.title}":`, error);
+        await serverQueue.textChannel.send(`❌ Đã có lỗi xảy ra khi cố gắng phát bài: **${song.title}**. Đang tự động chuyển sang bài tiếp theo.`);
+        
+        // Bỏ qua bài hát bị lỗi và phát bài tiếp theo
+        serverQueue.songs.shift();
+        playSong(guild, serverQueue.songs[0]);
+    }
 }
 
 
