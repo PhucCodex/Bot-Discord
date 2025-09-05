@@ -87,6 +87,20 @@ function setupDatabase() {
 
 setupDatabase();
 
+// --- HỆ THỐNG LEVEL LŨY TIẾN MỚI ---
+// Hàm tính toán level dựa trên tổng XP theo công thức cấp số cộng.
+// XP cần cho level L = 100 * (L+1). Ví dụ:
+// Lvl 0 -> 1: 100 XP
+// Lvl 1 -> 2: 200 XP
+// Lvl 2 -> 3: 300 XP
+// Tổng XP để đạt level L là: 50 * L * (L+1)
+function calculateLevel(xp) {
+    if (xp < 100) return 0;
+    // Giải phương trình bậc 2: 50L^2 + 50L - xp = 0 để tìm L
+    const level = Math.floor((-50 + Math.sqrt(2500 + 200 * xp)) / 100);
+    return level;
+}
+
 function getUserStats(userId, guildId) {
     let user = db.prepare('SELECT * FROM user_stats WHERE userId = ? AND guildId = ?').get(userId, guildId);
     if (!user) {
@@ -99,7 +113,8 @@ function getUserStats(userId, guildId) {
 }
 
 function updateUserXP(userId, guildId, newXp) {
-    const newLevel = Math.floor(newXp / 100);
+    // Sử dụng hàm tính level lũy tiến mới
+    const newLevel = calculateLevel(newXp);
     db.prepare('UPDATE user_stats SET xp = ?, level = ? WHERE userId = ? AND guildId = ?')
       .run(newXp, newLevel, userId, guildId);
     return { newXp, newLevel };
@@ -1100,24 +1115,23 @@ client.on('interactionCreate', async interaction => {
         else if (commandName === 'level') {
             const targetUser = interaction.options.getUser('user') || user;
             const userData = getUserStats(targetUser.id, guild.id);
-    
-            const xpForCurrentLevel = userData.level * 100;
-            const xpForNextLevel = (userData.level + 1) * 100;
+
+            // --- LOGIC LEVEL MỚI: TÍNH TOÁN DỰA TRÊN CÔNG THỨC LŨY TIẾN ---
+            const currentLevel = userData.level;
             
-            const currentProgress = userData.xp - xpForCurrentLevel;
+            // Tổng XP cần để đạt được level hiện tại (mốc dưới)
+            const xpForCurrentLevel = 50 * currentLevel * (currentLevel + 1);
+            
+            // Tổng XP cần để đạt được level tiếp theo (mốc trên)
+            const xpForNextLevel = 50 * (currentLevel + 1) * (currentLevel + 2);
+
+            // Lượng XP cần để lên cấp (sẽ tăng dần theo level)
             const neededProgress = xpForNextLevel - xpForCurrentLevel;
             
-            let displayProgress = currentProgress;
-            
-            // --- PHẦN SỬA LỖI HIỂN THỊ ---
-            // Khi người dùng vừa đạt mốc XP chẵn (ví dụ: 100, 200, 999900...)
-            // thay vì hiển thị "0 / 100", ta sẽ hiển thị "100 / 100" của level vừa hoàn thành.
-            // Điều này chỉ là một thay đổi về mặt hiển thị cho trực quan và tạo cảm giác "hoàn thành".
-            if (currentProgress === 0 && userData.xp > 0) {
-                displayProgress = neededProgress; 
-            }
+            // Lượng XP người dùng đã có trong level hiện tại
+            const currentProgress = userData.xp - xpForCurrentLevel;
     
-            const percentage = Math.max(0, Math.min(100, (displayProgress / neededProgress) * 100));
+            const percentage = Math.max(0, Math.min(100, (currentProgress / neededProgress) * 100));
             const progressBar = '█'.repeat(Math.floor(percentage / 10)) + '─'.repeat(10 - Math.floor(percentage / 10));
             
             const rankEmbed = new EmbedBuilder()
@@ -1127,7 +1141,7 @@ client.on('interactionCreate', async interaction => {
                 .addFields(
                     { name: '🌟 Level', value: `**${userData.level}**`, inline: true },
                     { name: '📈 Tổng XP', value: `**${userData.xp}**`, inline: true },
-                    { name: '📊 Tiến trình', value: `\`${progressBar}\`\n**${displayProgress}** / **${neededProgress}** XP` }
+                    { name: '📊 Tiến trình', value: `\`${progressBar}\`\n**${currentProgress}** / **${neededProgress}** XP` }
                 );
             await interaction.reply({ embeds: [rankEmbed] });
         }
@@ -1199,7 +1213,8 @@ client.on('interactionCreate', async interaction => {
         else if (commandName === 'set-level') {
             const targetUser = interaction.options.getUser('user');
             const level = interaction.options.getInteger('level');
-            const requiredXp = level * 100;
+            // --- LOGIC LEVEL MỚI: Cập nhật lệnh set-level để tính đúng XP tổng ---
+            const requiredXp = 50 * level * (level + 1);
             updateUserXP(targetUser.id, guild.id, requiredXp);
             await interaction.reply({ content: `✅ Đã thiết lập ${targetUser} thành **Level ${level}** với **${requiredXp} XP**.`, ephemeral: true });
         }
