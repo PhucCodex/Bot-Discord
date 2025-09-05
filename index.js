@@ -473,6 +473,11 @@ const commands = [
                         .setDescription('Chọn kênh văn bản để đặt bảng điều khiển.')
                         .addChannelTypes(ChannelType.GuildText)
                         .setRequired(true))
+                // --- PHẦN ĐƯỢC THÊM VÀO ---
+                .addStringOption(option => 
+                    option.setName('hinh_anh')
+                        .setDescription('URL của hình ảnh bạn muốn hiển thị phía trên bảng điều khiển.')
+                        .setRequired(false))
         ),
 
 ].map(command => {
@@ -1408,6 +1413,8 @@ client.on('interactionCreate', async interaction => {
                     const creatorChannel = interaction.options.getChannel('create_channel');
                     const category = interaction.options.getChannel('category');
                     const panelChannel = interaction.options.getChannel('control_panel_channel');
+                    // --- THÊM MỚI: Lấy URL hình ảnh ---
+                    const imageUrl = interaction.options.getString('hinh_anh');
 
                     try {
                         db.prepare('INSERT OR REPLACE INTO tempvoice_settings (guildId, creatorChannelId, categoryId, panelChannelId) VALUES (?, ?, ?, ?)')
@@ -1416,61 +1423,54 @@ client.on('interactionCreate', async interaction => {
                         console.error("Lỗi khi setup tempvoice:", e);
                         return interaction.followUp({ content: 'Đã xảy ra lỗi với database khi đang cài đặt. Vui lòng kiểm tra console.'});
                     }
+                    
+                    // --- THÊM MỚI: Gửi hình ảnh nếu có ---
+                    if (imageUrl) {
+                        try {
+                            await panelChannel.send({ files: [imageUrl] });
+                        } catch (error) {
+                            console.error("Lỗi khi gửi ảnh TempVoice Panel:", error);
+                            await interaction.followUp({ content: '⚠️ Lỗi: Không thể gửi hình ảnh. Vui lòng kiểm tra lại URL.' });
+                            // Vẫn tiếp tục thực thi dù ảnh lỗi
+                        }
+                    }
 
                     const embed = new EmbedBuilder()
-                        .setColor('#5865F2') // Discord Purple
+                        .setColor('#5865F2')
                         .setTitle('TempVoice Interface')
                         .setDescription(
-                            'Giao diện này có thể được sử dụng để quản lý các kênh thoại tạm thời. Nhiều tùy chọn hơn có sẵn với lệnh `/voice commands`.\n\n' +
-                            '## ⚙️ Nhấn các nút bên dưới để sử dụng giao diện'
+                            'Giao diện này có thể được sử dụng để quản lý các kênh thoại tạm thời. Nhiều tùy chọn hơn có sẵn với lệnh `/voice commands`.'
                         )
-                        .addFields(
-                            { name: '✏️ Tên', value: 'Đổi tên kênh thoại của bạn.', inline: true },
-                            { name: '👥 Giới Hạn', value: 'Đặt giới hạn người dùng cho kênh.', inline: true },
-                            { name: '🛡️ Riêng Tư', value: 'Khóa/mở khóa kênh cho công khai.', inline: true },
-                            { name: '🕒 Phong Đợi', value: 'Đặt thời gian chờ AFK cho kênh.', inline: true },
-                            { name: '#️⃣ Chủ Đề', value: 'Thêm chủ đề cho kênh thoại.', inline: true },
-                            { name: '\u200b', value: '\u200b', inline: false }, // Dòng trống để tạo khoảng cách
-                            { name: '✅ Tin Cậy', value: 'Cấp quyền truy cập cho người cụ thể.', inline: true },
-                            { name: '❌ Bỏ Tin Cậy', value: 'Xóa quyền truy cập của người cụ thể.', inline: true },
-                            { name: '📲 Mời', value: 'Tạo lời mời vào kênh.', inline: true },
-                            { name: '📞 Đá', value: 'Đuổi người dùng ra khỏi kênh.', inline: true },
-                            { name: '🌍 Khu Vực', value: 'Thay đổi khu vực kênh (Tính năng này đang lỗi hoặc không khả dụng).', inline: true },
-                            { name: '\u200b', value: '\u200b', inline: false }, // Dòng trống để tạo khoảng cách
-                            { name: '🚫 Chặn', value: 'Cấm người dùng vào kênh của bạn.', inline: true },
-                            { name: '🔰 Bỏ Chặn', value: 'Hủy cấm người dùng vào kênh.', inline: true },
-                            { name: '👑 Lấy Quyền', value: 'Lấy lại quyền sở hữu kênh.', inline: true },
-                            { name: '🔀 Chuyển Giao', value: 'Chuyển quyền sở hữu kênh cho người khác.', inline: true },
-                            { name: '🗑️ Xóa', value: 'Xóa kênh thoại của bạn.', inline: true }
-                        )
-                        .setTimestamp();
+                        .setFooter({ text: 'Nhấn các nút bên dưới để sử dụng giao diện' });
+
+                    // --- ĐÃ SỬA: Tất cả các nút đổi thành ButtonStyle.Secondary ---
                     
-                    // Hàng nút 1 (Thiết lập kênh)
+                    // Hàng nút 1
                     const row1 = new ActionRowBuilder()
                         .addComponents(
                             new ButtonBuilder().setCustomId('tv_rename').setEmoji('✏️').setStyle(ButtonStyle.Secondary),
                             new ButtonBuilder().setCustomId('tv_limit').setEmoji('👥').setStyle(ButtonStyle.Secondary),
                             new ButtonBuilder().setCustomId('tv_privacy').setEmoji('🛡️').setStyle(ButtonStyle.Secondary),
-                            new ButtonBuilder().setCustomId('tv_afk').setEmoji('🕒').setStyle(ButtonStyle.Secondary), // Nút mới cho AFK Timeout
-                            new ButtonBuilder().setCustomId('tv_topic').setEmoji('#️⃣').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_afk').setEmoji('🕒').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_topic').setEmoji('#️⃣').setStyle(ButtonStyle.Secondary)
                         );
-                    // Hàng nút 2 (Quyền truy cập và Mời/Đá)
+                    // Hàng nút 2
                     const row2 = new ActionRowBuilder()
                         .addComponents(
-                            new ButtonBuilder().setCustomId('tv_trust').setEmoji('✅').setStyle(ButtonStyle.Success),
-                            new ButtonBuilder().setCustomId('tv_untrust').setEmoji('❌').setStyle(ButtonStyle.Danger),
-                            new ButtonBuilder().setCustomId('tv_invite').setEmoji('📲').setStyle(ButtonStyle.Primary),
-                            new ButtonBuilder().setCustomId('tv_kick').setEmoji('📞').setStyle(ButtonStyle.Danger),
-                            new ButtonBuilder().setCustomId('tv_region').setEmoji('🌍').setStyle(ButtonStyle.Secondary).setDisabled(true), // Giữ nút này disabled cho đến khi có cách xử lý tốt hơn
+                            new ButtonBuilder().setCustomId('tv_trust').setEmoji('✅').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_untrust').setEmoji('❌').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_invite').setEmoji('📲').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_kick').setEmoji('📞').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_region').setEmoji('🌍').setStyle(ButtonStyle.Secondary).setDisabled(true)
                         );
-                    // Hàng nút 3 (Ban, Claim, Transfer, Delete)
+                    // Hàng nút 3
                     const row3 = new ActionRowBuilder()
                         .addComponents(
-                            new ButtonBuilder().setCustomId('tv_ban').setEmoji('🚫').setStyle(ButtonStyle.Danger),
-                            new ButtonBuilder().setCustomId('tv_unban').setEmoji('🔰').setStyle(ButtonStyle.Success),
-                            new ButtonBuilder().setCustomId('tv_claim').setEmoji('👑').setStyle(ButtonStyle.Primary),
-                            new ButtonBuilder().setCustomId('tv_transfer').setEmoji('🔀').setStyle(ButtonStyle.Primary),
-                            new ButtonBuilder().setCustomId('tv_delete').setEmoji('🗑️').setStyle(ButtonStyle.Danger),
+                            new ButtonBuilder().setCustomId('tv_ban').setEmoji('🚫').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_unban').setEmoji('🔰').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_claim').setEmoji('👑').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_transfer').setEmoji('🔀').setStyle(ButtonStyle.Secondary),
+                            new ButtonBuilder().setCustomId('tv_delete').setEmoji('🗑️').setStyle(ButtonStyle.Secondary)
                         );
 
                     await panelChannel.send({ embeds: [embed], components: [row1, row2, row3] });
