@@ -646,7 +646,7 @@ client.once('ready', () => {
             name: '🌃 Ngắm sao đêm cùng Phúc | /help', 
             type: ActivityType.Watching
         }],
-        status: 'online', 
+        status: 'dnd', 
     });
 
     restoreTempRoles();
