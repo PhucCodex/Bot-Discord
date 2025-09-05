@@ -10,7 +10,7 @@ app.listen(port, () => {
   console.log(`Server đang lắng nghe tại http://localhost:${port}`);
 });
 
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder, UserSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectModule, UserSelectModule, StringSelectMenuBuilder, UserSelectMenuBuilder } = require('discord.js');
 const ms = require('ms');
 require('dotenv').config();
 
