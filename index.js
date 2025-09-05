@@ -1745,13 +1745,13 @@ client.on('interactionCreate', async interaction => {
                     categoryId = SUPPORT_TICKET_CATEGORY_ID;
                     ticketType = 'hỗ-trợ';
                     welcomeMessage = `Hỗ trợ bạn về vấn đề **Kỹ thuật/Chung**. Vui lòng trình bày chi tiết vấn đề bạn đang gặp phải.`;
-                    ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`
+                    ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ về vấn đề gì hoặc khiếu nại thì cứ ghi vào nhé**`
                     break;
                 case 'admin_contact':
                     categoryId = ADMIN_TICKET_CATEGORY_ID;
                     ticketType = 'admin';
                     welcomeMessage = `**Cần alo ngay em Phúc**`;
-                    ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ về vấn đề gì hoặc khiếu nại thì cứ ghi vào nhé**`
+                    ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`
                     break;
                 default:
                     return interaction.followUp({ content: 'Lựa chọn không hợp lệ.' });
@@ -1790,6 +1790,41 @@ client.on('interactionCreate', async interaction => {
                 console.error("Lỗi khi tạo ticket theo danh mục:", error);
                 await interaction.followUp({ content: 'Đã xảy ra lỗi. Vui lòng kiểm tra lại các ID Category đã khai báo và quyền của bot.' });
             }
+        }
+        else if (interaction.customId === 'help_category_select') {
+            const selectedCategory = interaction.values[0];
+
+            // Dùng lại 'commands' và 'categories' đã định nghĩa ở trên cùng file
+            // Hoặc bạn có thể định nghĩa lại chúng ở đây
+            const allCommands = require('./index.js').commands; // Tạm thời để lấy danh sách commands
+            const categories = {
+                'fun_info': { label: '✨ Thông tin & Vui vẻ', commands: ['info', 'ping', 'hi1', 'hi2', 'time', 'feedback', 'avatar', 'poll'] },
+                'mod_utility': { label: '🛠️ Quản lý & Tiện ích', commands: ['announce', 'clear', 'kick', 'ban', 'unban', 'timeout', 'untimeout', 'rename', 'move', 'warn', 'warnings', 'resetwarnings'] },
+                'roles': { label: '👑 Quản lý Vai trò', commands: ['roletemp', 'unroletemp'] },
+                'support': { label: '🎫 Ticket & Form', commands: ['ticketsetup', 'formsetup', 'resettickets'] },
+                'leveling': { label: '🌟 Hệ thống Level', commands: ['level', 'daily', 'leaderboard', 'add-xp', 'remove-xp', 'set-level'] },
+                'giveaway': { label: '🎉 Giveaway', commands: ['giveaway'] }
+            };
+
+            const categoryData = categories[selectedCategory];
+            if (!categoryData) return;
+
+            const commandList = categoryData.commands
+                .map(cmdName => {
+                    const cmd = allCommands.find(c => c.name === cmdName);
+                    return cmd ? `**\`/${cmd.name}\`**: ${cmd.description}` : '';
+                })
+                .filter(Boolean)
+                .join('\n');
+
+            const categoryEmbed = new EmbedBuilder()
+                .setColor('Aqua')
+                .setTitle(categoryData.label)
+                .setDescription(commandList || 'Chưa có lệnh nào trong danh mục này.')
+                .setFooter({ text: 'Dùng /help [tên lệnh] để xem chi tiết hơn về một lệnh.'});
+
+            // Cập nhật tin nhắn gốc với danh sách lệnh của danh mục đã chọn
+            await interaction.update({ embeds: [categoryEmbed] });
         }
     }
 });
