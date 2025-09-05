@@ -411,6 +411,14 @@ const commands = [
                 .addStringOption(option => option.setName('message_id').setDescription('ID tin nhắn của giveaway đang chạy.').setRequired(true))
         ),
 
+    new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('Hiển thị danh sách các lệnh hoặc thông tin chi tiết về một lệnh cụ thể.')
+    .addStringOption(option =>
+        option.setName('lệnh')
+            .setDescription('Tên lệnh bạn muốn xem chi tiết.')
+            .setRequired(false)),
+
     // --- CÁC LỆNH MỚI CHO TÍNH NĂNG NGHE NHẠC ---
     new SlashCommandBuilder()
         .setName('play')
@@ -727,6 +735,76 @@ client.on('interactionCreate', async interaction => {
     
     if (interaction.isChatInputCommand()) {
         const { commandName, user, guild } = interaction;
+
+    if (commandName === 'help') {
+            const commandArg = interaction.options.getString('lệnh');
+
+            // --- Chế độ xem chi tiết một lệnh ---
+            if (commandArg) {
+                const command = commands.find(cmd => cmd.name === commandArg.toLowerCase());
+                if (!command) {
+                    return interaction.reply({ content: `Không tìm thấy lệnh nào có tên \`${commandArg}\`.`, ephemeral: true });
+                }
+
+                const detailEmbed = new EmbedBuilder()
+                    .setColor('Aqua')
+                    .setTitle(`Trợ giúp cho lệnh: \`/${command.name}\``)
+                    .setDescription(command.description || 'Lệnh này không có mô tả.');
+
+                if (command.options && command.options.length > 0) {
+                    let optionsText = '';
+                    command.options.forEach(opt => {
+                        // Xử lý cho subcommand
+                        if (opt.type === 1 || opt.type === 2) { // 1 = SUB_COMMAND, 2 = SUB_COMMAND_GROUP
+                             optionsText += `\n**Nhóm lệnh con: \`${opt.name}\`**`;
+                             opt.options.forEach(subOpt => {
+                                 optionsText += `\n> \`${subOpt.name}\`: ${subOpt.description}`;
+                             });
+                        } else {
+                            optionsText += `\n**\`${opt.name}\`**: ${opt.description} *(Bắt buộc: ${opt.required ? 'Có' : 'Không'})*`;
+                        }
+                    });
+                    detailEmbed.addFields({ name: 'Các tham số', value: optionsText });
+                }
+                
+                return interaction.reply({ embeds: [detailEmbed], ephemeral: true });
+            }
+
+            // --- Chế độ xem danh sách tất cả các lệnh ---
+            const helpEmbed = new EmbedBuilder()
+                .setColor('Gold')
+                .setTitle('📜 Bảng điều khiển trợ giúp của Bánh Bèo Bot')
+                .setDescription('Đây là danh sách tất cả các lệnh có sẵn. Dùng `/help [tên_lệnh]` để xem chi tiết hơn.');
+
+            // Phân loại các lệnh
+            const categories = {
+                '✨ Thông tin & Vui vẻ': ['info', 'ping', 'hi1', 'hi2', 'time', 'feedback', 'avatar', 'poll'],
+                '🛠️ Quản lý & Tiện ích': ['announce', 'clear', 'kick', 'ban', 'unban', 'timeout', 'untimeout', 'rename', 'move', 'warn', 'warnings', 'resetwarnings'],
+                '👑 Quản lý Vai trò': ['roletemp', 'unroletemp'],
+                '🎫 Ticket & Form': ['ticketsetup', 'formsetup', 'resettickets'],
+                '🌟 Hệ thống Level': ['level', 'daily', 'leaderboard', 'add-xp', 'remove-xp', 'set-level'],
+                '🎉 Giveaway': ['giveaway'],
+                '🎶 Nghe nhạc (Tạm tắt)': ['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying', 'loop']
+            };
+
+            for (const category in categories) {
+                const commandList = categories[category]
+                    .map(cmdName => {
+                        const cmd = commands.find(c => c.name === cmdName);
+                        return cmd ? `\`/${cmd.name}\`` : '';
+                    })
+                    .filter(Boolean) // Loại bỏ các lệnh không tìm thấy
+                    .join(', ');
+                
+                if (commandList) {
+                    helpEmbed.addFields({ name: category, value: commandList });
+                }
+            }
+            
+            helpEmbed.setFooter({ text: 'Bot được phát triển bởi Phúc.' });
+            
+            return interaction.reply({ embeds: [helpEmbed] });
+        }
         
         // --- XỬ LÝ CÁC LỆNH NHẠC ---
         const musicCommands = ['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying', 'loop'];
