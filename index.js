@@ -643,8 +643,8 @@ client.once('ready', () => {
 
     client.user.setPresence({
         activities: [{
-            name: '🎶 Nhạc cho bạn', 
-            type: ActivityType.Playing
+            name: '🌃 Ngắm sao đêm cùng Phúc | /help', 
+            type: ActivityType.Watching
         }],
         status: 'online', 
     });
