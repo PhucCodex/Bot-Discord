@@ -37,6 +37,10 @@ const MESSAGE_COOLDOWN_SECONDS = 60; // Chờ 60 giây giữa 2 tin nhắn để
 const NO_XP_ROLE_ID = 'YOUR_ROLE_ID_HERE'; 
 // ================================================================= //
 
+// --- KHỞI TẠO CÁC BIẾN CẦN THIẾT ---
+const messageCooldown = new Set();
+const giveawayTimeouts = new Map();
+
 
 function setupDatabase() {
     db.exec(`
@@ -97,7 +101,8 @@ function setupDatabase() {
         CREATE TABLE IF NOT EXISTS tempvoice_settings (
             guildId TEXT PRIMARY KEY,
             creatorChannelId TEXT NOT NULL,
-            categoryId TEXT NOT NULL
+            categoryId TEXT NOT NULL,
+            panelChannelId TEXT NOT NULL
         )
     `);
 
@@ -500,6 +505,12 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 async function endGiveaway(messageId) {
     const giveaway = db.prepare('SELECT * FROM giveaways WHERE messageId = ? AND ended = 0').get(messageId);
     if (!giveaway) return;
+    
+    // Xóa timeout khỏi map khi giveaway kết thúc
+    if (giveawayTimeouts.has(messageId)) {
+        clearTimeout(giveawayTimeouts.get(messageId));
+        giveawayTimeouts.delete(messageId);
+    }
 
     db.prepare('UPDATE giveaways SET ended = 1 WHERE messageId = ?').run(messageId);
     
@@ -554,7 +565,8 @@ async function scheduleGiveawaysOnStartup() {
             await endGiveaway(giveaway.messageId);
         } else {
             console.log(`Khôi phục lịch hẹn kết thúc giveaway (ID: ${giveaway.messageId}) sau ${ms(remainingTime)}.`);
-            setTimeout(() => endGiveaway(giveaway.messageId), remainingTime);
+            const timeout = setTimeout(() => endGiveaway(giveaway.messageId), remainingTime);
+            giveawayTimeouts.set(giveaway.messageId, timeout);
         }
     }
 }
@@ -1315,8 +1327,9 @@ client.on('interactionCreate', async interaction => {
 
                     db.prepare('INSERT INTO giveaways (messageId, channelId, guildId, prize, winnerCount, endsAt, hostedBy) VALUES (?, ?, ?, ?, ?, ?, ?)')
                       .run(message.id, channel.id, guild.id, prize, winnerCount, endsAt, user.id);
-
-                    setTimeout(() => endGiveaway(message.id), durationMs);
+                    
+                    const timeout = setTimeout(() => endGiveaway(message.id), durationMs);
+                    giveawayTimeouts.set(message.id, timeout);
 
                     await interaction.followUp({ content: `✅ Đã bắt đầu giveaway tại kênh ${channel}!` });
                 } catch (error) {
@@ -1377,8 +1390,10 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 // Hủy lịch hẹn cũ và kết thúc ngay
-                const runningTimeout = client.timeouts.find(t => t._call.args[0] === messageId);
-                if(runningTimeout) clearTimeout(runningTimeout);
+                if (giveawayTimeouts.has(messageId)) {
+                    clearTimeout(giveawayTimeouts.get(messageId));
+                    giveawayTimeouts.delete(messageId);
+                }
 
                 await endGiveaway(messageId);
                 await interaction.followUp({ content: '✅ Đã kết thúc giveaway thành công.' });
@@ -1394,8 +1409,14 @@ client.on('interactionCreate', async interaction => {
                 const category = interaction.options.getChannel('category');
                 const panelChannel = interaction.options.getChannel('control_panel_channel');
 
-                db.prepare('INSERT OR REPLACE INTO tempvoice_settings (guildId, creatorChannelId, categoryId, panelChannelId) VALUES (?, ?, ?, ?)')
-                  .run(guild.id, creatorChannel.id, category.id, panelChannel.id);
+                try {
+                    db.prepare('INSERT OR REPLACE INTO tempvoice_settings (guildId, creatorChannelId, categoryId, panelChannelId) VALUES (?, ?, ?, ?)')
+                      .run(guild.id, creatorChannel.id, category.id, panelChannel.id);
+                } catch(e) {
+                    console.error("Lỗi khi setup tempvoice:", e);
+                    return interaction.followUp({ content: 'Đã xảy ra lỗi với database khi đang cài đặt. Vui lòng kiểm tra console.'});
+                }
+
 
                 const embed = new EmbedBuilder()
                     .setColor('Purple')
