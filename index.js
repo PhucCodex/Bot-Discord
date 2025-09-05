@@ -34,7 +34,7 @@ const MESSAGE_COOLDOWN_SECONDS = 60; // Chờ 60 giây giữa 2 tin nhắn để
 // --- VAI TRÒ KHÔNG NHẬN XP ---
 // ⚠️ THAY ID VAI TRÒ BẠN MUỐN CHẶN NHẬN XP VÀO ĐÂY
 // Để trống ('') nếu bạn không muốn dùng tính năng này.
-const NO_XP_ROLE_ID = '1412420393167355975'; 
+const NO_XP_ROLE_ID = 'YOUR_ROLE_ID_HERE'; 
 // ================================================================= //
 
 
@@ -390,7 +390,6 @@ const commands = [
         .addUserOption(option => option.setName('user').setDescription('Thành viên cần set level.').setRequired(true))
         .addIntegerOption(option => option.setName('level').setDescription('Level muốn thiết lập.').setRequired(true).setMinValue(0))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -1104,10 +1103,21 @@ client.on('interactionCreate', async interaction => {
     
             const xpForCurrentLevel = userData.level * 100;
             const xpForNextLevel = (userData.level + 1) * 100;
+            
             const currentProgress = userData.xp - xpForCurrentLevel;
             const neededProgress = xpForNextLevel - xpForCurrentLevel;
             
-            const percentage = Math.max(0, Math.min(100, (currentProgress / neededProgress) * 100));
+            let displayProgress = currentProgress;
+            
+            // --- PHẦN SỬA LỖI HIỂN THỊ ---
+            // Khi người dùng vừa đạt mốc XP chẵn (ví dụ: 100, 200, 999900...)
+            // thay vì hiển thị "0 / 100", ta sẽ hiển thị "100 / 100" của level vừa hoàn thành.
+            // Điều này chỉ là một thay đổi về mặt hiển thị cho trực quan và tạo cảm giác "hoàn thành".
+            if (currentProgress === 0 && userData.xp > 0) {
+                displayProgress = neededProgress; 
+            }
+    
+            const percentage = Math.max(0, Math.min(100, (displayProgress / neededProgress) * 100));
             const progressBar = '█'.repeat(Math.floor(percentage / 10)) + '─'.repeat(10 - Math.floor(percentage / 10));
             
             const rankEmbed = new EmbedBuilder()
@@ -1117,7 +1127,7 @@ client.on('interactionCreate', async interaction => {
                 .addFields(
                     { name: '🌟 Level', value: `**${userData.level}**`, inline: true },
                     { name: '📈 Tổng XP', value: `**${userData.xp}**`, inline: true },
-                    { name: '📊 Tiến trình', value: `\`${progressBar}\`\n**${currentProgress}** / **${neededProgress}** XP` }
+                    { name: '📊 Tiến trình', value: `\`${progressBar}\`\n**${displayProgress}** / **${neededProgress}** XP` }
                 );
             await interaction.reply({ embeds: [rankEmbed] });
         }
