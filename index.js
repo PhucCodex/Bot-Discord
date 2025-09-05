@@ -11,7 +11,7 @@ app.listen(port, () => {
 });
 
 // --- THƯ VIỆN CŨ ---
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder } = require('discord.js');
 const ms = require('ms');
 require('dotenv').config();
 
@@ -498,7 +498,18 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     }
 })();
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessageReactions] });
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMembers, 
+        GatewayIntentBits.GuildVoiceStates, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent, 
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.DirectMessages // <--- THÊM INTENT NÀY
+    ],
+    partials: [Partials.Channel] // <--- VÀ THÊM DÒNG NÀY
+});
 
 // ================================================================= //
 // --- CÁC HÀM XỬ LÝ TÍNH NĂNG NGHE NHẠC ---
@@ -1975,7 +1986,7 @@ else if (customId.startsWith('start_application_form_')) {
 
                 // Phản hồi ẩn để menu có thể được bấm lại
                 await interaction.reply({ 
-                    content: 'Mình đã gửi hướng dẫn đăng ký vào tin nhắn riêng (DM) của bạn. Hãy kiểm tra nhé!', 
+                    content: 'Bạn kiểm tra tin nhắn riêng nhé / Please check your private messages. ', 
                     ephemeral: true 
                 });
 
