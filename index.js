@@ -84,7 +84,11 @@ const DEFAULT_FEEDBACK_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_ROLE_ID = '1412090993909563534';    
 const WELCOME_CHANNEL_ID = '1413874004690997378';
 const GOODBYE_CHANNEL_ID = '1413893224266993818';
-const AUTO_ROLE_ID = '1413903458414887073';
+const AUTO_ROLE_IDS = [
+    '1413903458414887073', // ID vai trò cũ
+    '1413900211708756008',    // <-- Thay ID vai trò thứ hai vào đây
+    '1413924235549610025'     // <-- Bạn có thể thêm bao nhiêu tùy thích
+];
 const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif'
 const CHAT_CHANNEL_ID = '1413876927936331878';
 const SUPPORT_CHANNEL_ID = '1413878121995960361';
@@ -2324,17 +2328,19 @@ client.on('guildMemberAdd', async member => {
         }
     }
 
-    if (AUTO_ROLE_ID) {
-        try {
-            const role = member.guild.roles.cache.get(AUTO_ROLE_ID);
-            if (role) {
-                await member.roles.add(role);
-                console.log(`Đã gán vai trò "${role.name}" cho ${member.user.tag}.`);
-            } else {
-                 console.log(`Không tìm thấy vai trò tự động với ID: ${AUTO_ROLE_ID}`);
+    if (AUTO_ROLE_IDS && AUTO_ROLE_IDS.length > 0) {
+        for (const roleId of AUTO_ROLE_IDS) {
+            try {
+                const role = member.guild.roles.cache.get(roleId);
+                if (role) {
+                    await member.roles.add(role);
+                    console.log(`Đã gán vai trò "${role.name}" cho ${member.user.tag}.`);
+                } else {
+                    console.warn(`Không tìm thấy vai trò tự động với ID: ${roleId}`);
+                }
+            } catch (error) {
+                console.error(`Lỗi khi tự động gán vai trò ID ${roleId} cho ${member.user.tag}:`, error);
             }
-        } catch (error) {
-            console.error(`Lỗi khi tự động gán vai trò cho ${member.user.tag}:`, error);
         }
     }
 
