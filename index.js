@@ -429,7 +429,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.DirectMessages // <--- THÊM INTENT NÀY
     ],
-    partials: [Partials.Channel] // <--- VÀ THÊM DÒNG NÀY
+    partials: [Partials.Channel, Partials.GuildMember] // <--- VÀ THÊM DÒNG NÀY
 });
 
 // ================================================================= //
