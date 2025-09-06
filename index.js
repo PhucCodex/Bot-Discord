@@ -80,14 +80,14 @@ function setupDatabase() {
 
 setupDatabase();
 
-const DEFAULT_FEEDBACK_CHANNEL_ID = '1128546415250198539';
+const DEFAULT_FEEDBACK_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_ROLE_ID = '1412090993909563534';    
 const WELCOME_CHANNEL_ID = '1413874004690997378';
 const GOODBYE_CHANNEL_ID = '1413893224266993818';
 const AUTO_ROLE_ID = '1413903458414887073';
 const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif'
 const CHAT_CHANNEL_ID = '1413876927936331878';
-const SUPPORT_CHANNEL_ID = '1412323492162174988';
+const SUPPORT_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_TICKET_CATEGORY_ID = '1413009121606631456';
 const ADMIN_TICKET_CATEGORY_ID = '1413009227156291634';
 const STAFF_ROLE_ID = '1408719686509662340';
@@ -2305,9 +2305,9 @@ client.on('guildMemberAdd', async member => {
             .setColor('#57F287')
             .setTitle(`🎉 Chào mừng thành viên mới! 🎉`)
             .setDescription(
-                `Chào mừng bạn ${member} đã hạ cánh xuống server!\n\n` +
-                `Đừng quên ghé qua 2 channel này nhé **<#${CHAT_CHANNEL_ID}>** & **<#${SUPPORT_CHANNEL_ID}>**\n\n` +
-                `Hy vọng bạn sẽ có những giây phút vui vẻ và tuyệt vời tại đây.`
+                `Chào mừng bạn ${member} đã hạ cánh xuống học viện!\n\n` +
+                `Đừng quên ghé qua **<#${CHAT_CHANNEL_ID}>** & **<#${SUPPORT_CHANNEL_ID}>**\n\n` +
+                `**Hy vọng bạn sẽ có những giây phút vui vẻ và tuyệt vời tại đây. <a:emoji_12022:1410282605042995230>**`
             )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             .setImage(randomImage)
