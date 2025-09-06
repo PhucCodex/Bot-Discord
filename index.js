@@ -2316,7 +2316,7 @@ client.on('guildMemberAdd', async member => {
 
         try {
             await channel.send({ 
-                content: `<@&${SUPPORT_ROLE_ID}> ơi, có thành viên mới ${member} nè!`,
+                content: ``,
                 embeds: [welcomeEmbed] 
             });
         } catch (error) {
@@ -2341,10 +2341,24 @@ client.on('guildMemberAdd', async member => {
     const generalChatChannel = member.guild.channels.cache.get(GENERAL_CHAT_CHANNEL_ID);
     if (generalChatChannel) {
         try {
-            const welcomeMessage = `**<:2121announcementbadge:1413912152871272499> Thông báo có bạn vừa bị phụ huynh cho nhập học, tên *${member}* đã đến với *${member.guild.name}*. 🎉**`;
-            await generalChatChannel.send(welcomeMessage);
+            // Tạo embed mới cho kênh chat chung
+            const generalChatEmbed = new EmbedBuilder()
+                .setColor('Blue')
+                .setAuthor({ name: `Chào mừng thành viên mới!`, iconURL: member.guild.iconURL() })
+                .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                .setDescription(
+                    `<:2121announcementbadge:1413912152871272499> Thông báo từ phòng hiệu trưởng: Học sinh mới **${member}** đã gia nhập **${member.guild.name}**! Toàn trường chào đón bạn mới nào <a:rainbowjellydanc:1410282618338934958> \n <a:kurbuk:1410282805652492469> Và chúng ta hãy cùng nhau "cúp tiết", "trốn học", "nói chuyện riêng", "hóng drama", "chia sẻ chuyện thầm kín' <a:Devilcat:1410282696621424673>`
+                )
+                .setTimestamp()
+                .setFooter({ text: `Hiện tại server có ${member.guild.memberCount} thành viên.` });
+
+            // Gửi embed và ping role Lễ Tân
+            await generalChatChannel.send({
+                content: `<@&${RECEPTIONIST_ROLE_ID}> ơi, có thành viên mới nè!`, // Ping role ở đây
+                embeds: [generalChatEmbed]
+            });
         } catch (error) {
-            console.error("Lỗi khi gửi tin nhắn vào kênh chat chung:", error);
+            console.error("Lỗi khi gửi tin nhắn embed vào kênh chat chung:", error);
         }
     }
 });
