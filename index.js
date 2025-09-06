@@ -2364,19 +2364,10 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('guildMemberRemove', async member => {
-    if (member.partial) {
-        try {
-            await member.fetch();
-        } catch (error) {
-            console.error('Lỗi khi fetch thông tin đầy đủ của thành viên đã rời đi:', error);
-            const channel = member.guild.channels.cache.get(GOODBYE_CHANNEL_ID);
-            if(channel) await channel.send(`Một thành viên với ID: ${member.id} đã rời khỏi server.`);
-            return;
-        }
-    }
-
+    // Bỏ qua nếu là bot
     if (member.user.bot) return;
 
+    // Tìm kênh goodbye
     const channel = member.guild.channels.cache.get(GOODBYE_CHANNEL_ID);
     if (!channel) {
         console.log(`Lỗi: Không tìm thấy kênh tạm biệt với ID: ${GOODBYE_CHANNEL_ID}`);
@@ -2384,17 +2375,26 @@ client.on('guildMemberRemove', async member => {
     }
 
     try {
+        // Luôn fetch thông tin người dùng từ ID để đảm bảo có dữ liệu
+        const user = await client.users.fetch(member.id);
+
         const goodbyeEmbed = new EmbedBuilder()
             .setColor('#FF474D')
-            .setTitle(`👋 Một thành viên đã rời đi 👋`)
-            .setDescription(`**${member.user.tag}** đã rời khỏi server. Hẹn gặp lại!`)
-            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            .setTitle(`👋 Một thành viên đã rời đi`)
+            .setThumbnail(user.displayAvatarURL({ dynamic: true })) // Dùng avatar của user
+            .addFields(
+                { name: 'Tên thành viên', value: user.tag, inline: true },
+                { name: 'ID', value: `\`${user.id}\``, inline: true }
+            )
             .setImage(GOODBYE_GIF_URL)
             .setTimestamp()
             .setFooter({ text: `Hiện tại server còn lại ${member.guild.memberCount} thành viên.` });
 
         await channel.send({ embeds: [goodbyeEmbed] });
+        
     } catch (error) {
         console.error("Lỗi khi tạo hoặc gửi tin nhắn tạm biệt:", error);
+        // Fallback an toàn hơn nếu fetch user cũng thất bại
+        await channel.send(`Một thành viên với ID: \`${member.id}\` đã rời khỏi server.`).catch(e => console.error("Không thể gửi tin nhắn fallback.", e));
     }
 });
