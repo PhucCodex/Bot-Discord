@@ -1760,9 +1760,9 @@ client.on('interactionCreate', async interaction => {
 
             const openButton = new ButtonBuilder()
                 .setCustomId('show_ticket_options')
-                .setLabel('Mở Ticket 2.0')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('<:Email37:1412322372790255636>');
+                .setLabel('Mở Ticket')
+                .setStyle(ButtonStyle.Danger)
+                .setEmoji('<:email49:1412322374891602020>');
             
             const row = new ActionRowBuilder().addComponents(openButton);
 
