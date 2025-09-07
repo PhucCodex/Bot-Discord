@@ -85,9 +85,12 @@ const SUPPORT_ROLE_ID = '1412090993909563534';
 const WELCOME_CHANNEL_ID = '1413874004690997378';
 const GOODBYE_CHANNEL_ID = '1413893224266993818';
 const AUTO_ROLE_IDS = [
-    '1413903458414887073', // ID vai trò cũ
-    '1413900211708756008',    // <-- Thay ID vai trò thứ hai vào đây
-    '1413924235549610025'     // <-- Bạn có thể thêm bao nhiêu tùy thích
+    '1413900211708756008', // ID vai trò cũ
+    '1413924595911884800',    // <-- Thay ID vai trò thứ hai vào đây
+    '1413924235549610025',
+    '1413924549644259499',
+    '1413929850707771564',
+    '1413930005003763732',      // <-- Bạn có thể thêm bao nhiêu tùy thích
 ];
 const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif'
 const CHAT_CHANNEL_ID = '1413876927936331878';
