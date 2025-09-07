@@ -27,7 +27,7 @@ const noituGames = new Map(); // Quản lý các game Nối Từ đang diễn ra
 
 // --- CÁC HẰNG SỐ CẤU HÌNH ---
 const MOD_LOG_CHANNEL_ID = '1413071939395653722';
-const FORBIDDEN_WORDS = ['lồn', 'cặc', 'ngu',];
+// FORBIDDEN_WORDS đã bị xóa
 const TIMEOUT_DURATION = '60m';
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_ROLE_ID = '1412090993909563534';
@@ -1098,7 +1098,7 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ================================================================= //
-// --- SỰ KIỆN: TỰ ĐỘNG KIỂM DUYỆT TIN NHẮN (AUTO-MOD) ---
+// --- SỰ KIỆN: XỬ LÝ TIN NHẮN (CHỈ CÒN GAME NỐI TỪ) ---
 // ================================================================= //
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
@@ -1145,37 +1145,7 @@ client.on('messageCreate', async message => {
         return; 
     }
 
-    if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-    const messageContent = message.content.toLowerCase();
-    if (FORBIDDEN_WORDS.some(word => messageContent.includes(word))) {
-        try { await message.delete(); } catch (error) { console.error("Auto-Mod: Không thể xóa tin nhắn.", error); }
-        const reason = 'Sử dụng ngôn từ không phù hợp (Tự động bởi Bot).';
-        try {
-            db.prepare('INSERT INTO warnings (userId, guildId, reason, timestamp) VALUES (?, ?, ?, ?)').run(message.author.id, message.guild.id, reason, Date.now());
-            const { count: warnCount } = db.prepare('SELECT COUNT(*) as count FROM warnings WHERE userId = ? AND guildId = ?').get(message.author.id, message.guild.id);
-            const logChannel = await message.guild.channels.fetch(MOD_LOG_CHANNEL_ID).catch(() => null);
-            if (warnCount === 1) {
-                try {
-                    await message.author.send({ embeds: [new EmbedBuilder().setColor('Yellow').setTitle(`Cảnh cáo lần 1 tại ${message.guild.name}`).setDescription(`Bạn đã bị cảnh cáo vì lý do: **${reason}**.\n\nHãy tuân thủ nội quy của server.`)] });
-                } catch { console.log(`Không thể DM cảnh cáo cho ${message.author.tag}`); }
-                const warningMessage = await message.channel.send(`${message.author}, bạn đã bị cảnh cáo lần 1 vì sử dụng ngôn từ không phù hợp. Vui lòng kiểm tra tin nhắn riêng.`);
-                setTimeout(() => warningMessage.delete().catch(console.error), 10000);
-                if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setColor('Yellow').setTitle('Auto-Mod: Cảnh Cáo').addFields({ name: 'Thành viên', value: `${message.author}`, inline: true }, { name: 'Hành động', value: 'Cảnh cáo (Lần 1)', inline: true }, { name: 'Tổng cảnh cáo', value: `${warnCount}`, inline: true }, { name: 'Lý do', value: reason })] });
-            } else if (warnCount === 2) {
-                if (message.member.moderatable) {
-                    await message.member.timeout(ms(TIMEOUT_DURATION), reason);
-                    await message.author.send({ embeds: [new EmbedBuilder().setColor('Orange').setTitle(`Bạn đã bị Timeout tại ${message.guild.name}`).setDescription(`Bạn đã bị timeout **${TIMEOUT_DURATION}** vì tái phạm.\n**Lý do:** ${reason}\n\n⚠️ **Đây là cảnh cáo lần 2. Vi phạm lần nữa sẽ dẫn đến bị Ban vĩnh viễn.**`)] });
-                    if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setColor('Orange').setTitle('Auto-Mod: Timeout').addFields({ name: 'Thành viên', value: `${message.author}`, inline: true }, { name: 'Hành động', value: `Timeout ${TIMEOUT_DURATION} (Lần 2)`, inline: true }, { name: 'Tổng cảnh cáo', value: `${warnCount}`, inline: true }, { name: 'Lý do', value: reason })] });
-                }
-            } else if (warnCount >= 3) {
-                if (message.member.bannable) {
-                    await message.author.send({ embeds: [new EmbedBuilder().setColor('Red').setTitle(`Bạn đã bị Ban vĩnh viễn khỏi ${message.guild.name}`).setDescription(`Bạn đã bị ban vĩnh viễn vì vi phạm lần thứ 3.\n**Lý do:** ${reason}`)] }).catch(() => {});
-                    await message.member.ban({ reason });
-                    if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setColor('Red').setTitle('Auto-Mod: Ban vĩnh viễn').addFields({ name: 'Thành viên', value: `${message.author}`, inline: true }, { name: 'Hành động', value: 'Ban vĩnh viễn (Lần 3+)', inline: true }, { name: 'Tổng cảnh cáo', value: `${warnCount}`, inline: true }, { name: 'Lý do', value: reason })] });
-                }
-            }
-        } catch (dbError) { console.error("Lỗi khi tương tác với DB trong Auto-Mod:", dbError); }
-    }
+    // --- TOÀN BỘ LOGIC AUTO-MOD ĐÃ BỊ XÓA KHỎI ĐÂY ---
 });
 
 // ================================================================= //
