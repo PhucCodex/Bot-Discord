@@ -23,6 +23,7 @@ const db = new Database('/data/data.db');
 
 // --- BIẾN TOÀN CỤC ---
 const queue = new Map(); // Quản lý hàng đợi nhạc cho mỗi server
+const noituGames = new Map(); // Quản lý các game Nối Từ đang diễn ra
 
 // --- CÁC HẰNG SỐ CẤU HÌNH ---
 const MOD_LOG_CHANNEL_ID = '1413071939395653722';
@@ -54,6 +55,12 @@ setupDatabase();
 
 // --- ĐỊNH NGHĨA CÁC LỆNH SLASH ---
 const commands = [
+    new SlashCommandBuilder().setName('noitu')
+        .setDescription('Chơi game nối từ Tiếng Việt.')
+        .addSubcommand(sub => sub.setName('start').setDescription('Bắt đầu một ván nối từ trong kênh này.'))
+        .addSubcommand(sub => sub.setName('stop').setDescription('Dừng ván nối từ và tuyên bố người thắng cuộc.'))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+
     new SlashCommandBuilder().setName('info').setDescription('Hiển thị thông tin người dùng hoặc server.').addSubcommand(sub => sub.setName('user').setDescription('Hiển thị thông tin người dùng.').addUserOption(opt => opt.setName('user').setDescription('Người bạn muốn xem thông tin').setRequired(true))).addSubcommand(sub => sub.setName('server').setDescription('Hiển thị thông tin về server hiện tại.')),
     new SlashCommandBuilder().setName('ping').setDescription('Kiểm tra độ trễ của bot'),
     new SlashCommandBuilder().setName('hi1').setDescription('Gửi lời chào thân thương đến một người đáng yêu.').addUserOption(opt => opt.setName('người').setDescription('Người bạn muốn chào').setRequired(true)),
@@ -459,7 +466,7 @@ client.on('interactionCreate', async interaction => {
         } else if (customId === 'help_category_select') {
             const selectedCategory = interaction.values[0];
             const categories = {
-                'fun_info': { label: '✨ Thông tin & Vui vẻ', commands: ['info', 'ping', 'hi1', 'hi2', 'time', 'feedback', 'avatar', 'poll'] },
+                'fun_info': { label: '✨ Thông tin & Vui vẻ', commands: ['noitu', 'info', 'ping', 'hi1', 'hi2', 'time', 'feedback', 'avatar', 'poll'] },
                 'mod_utility': { label: '🛠️ Quản lý & Tiện ích', commands: ['announce', 'clear', 'kick', 'ban', 'unban', 'timeout', 'untimeout', 'rename', 'move', 'warn', 'warnings', 'resetwarnings'] },
                 'roles': { label: '👑 Quản lý Vai trò', commands: ['roletemp', 'unroletemp'] },
                 'support': { label: '🎫 Ticket & Form', commands: ['ticketsetup', 'formsetup', 'resettickets', 'applysetup'] },
@@ -495,6 +502,53 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         if (!interaction.inGuild()) return;
         const { commandName, user, guild } = interaction;
+        
+        // --- XỬ LÝ LỆNH /noitu ---
+        if (commandName === 'noitu') {
+            const subcommand = interaction.options.getSubcommand();
+            const channel = interaction.channel;
+
+            if (subcommand === 'start') {
+                if (noituGames.has(channel.id)) {
+                    return interaction.reply({ content: 'Game nối từ đã được bắt đầu ở kênh này rồi!', ephemeral: true });
+                }
+
+                const firstWord = "bắt đầu";
+                const gameData = {
+                    lastWord: firstWord,
+                    lastPlayerId: client.user.id,
+                    usedWords: new Set([firstWord]),
+                };
+                
+                const startEmbed = new EmbedBuilder()
+                    .setColor('Green')
+                    .setTitle('📝 Game Nối Từ Bắt Đầu!')
+                    .setDescription(`Luật chơi đã được thay đổi:\n- Nối từ tiếp theo bằng chữ cái cuối cùng của từ trước đó.\n- Từ ngữ phải là Tiếng Việt, có nghĩa và chỉ có một tiếng.\n- **Không có giới hạn thời gian.**\n- Khi ai đó bí, dùng lệnh \`/noitu stop\` để kết thúc và tìm ra người thắng cuộc.`)
+                    .addFields({ name: 'Từ bắt đầu là', value: `**${firstWord}**` })
+                    .setFooter({ text: `Chúc mọi người chơi vui vẻ!` });
+
+                noituGames.set(channel.id, gameData);
+                await interaction.reply({ embeds: [startEmbed] });
+                await channel.send(`Từ tiếp theo phải bắt đầu bằng chữ **"${firstWord.slice(-1)}"**. Đến lượt mọi người!`);
+
+            } else if (subcommand === 'stop') {
+                if (!noituGames.has(channel.id)) {
+                    return interaction.reply({ content: 'Không có game nối từ nào đang diễn ra ở kênh này.', ephemeral: true });
+                }
+
+                const game = noituGames.get(channel.id);
+                noituGames.delete(channel.id);
+
+                // --- THAY ĐỔI: Tuyên bố người thắng cuộc ---
+                if (game.lastPlayerId === client.user.id) {
+                     return interaction.reply({ content: '✅ Trò chơi đã kết thúc. Chưa có ai trả lời nên không có người thắng cuộc.' });
+                } else {
+                    const winner = await client.users.fetch(game.lastPlayerId);
+                    return interaction.reply({ content: `**Trò chơi kết thúc!**\n🎉 Người chiến thắng là **${winner.tag}** với từ cuối cùng là **"${game.lastWord}"**! 🎉` });
+                }
+            }
+            return;
+        }
 
         const musicCommands = ['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying', 'loop'];
         if (musicCommands.includes(commandName)) {
@@ -1048,6 +1102,49 @@ client.on('interactionCreate', async interaction => {
 // ================================================================= //
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
+
+    // --- Logic game Nối Từ ---
+    if (noituGames.has(message.channel.id)) {
+        const game = noituGames.get(message.channel.id);
+        const word = message.content.toLowerCase().trim();
+
+        if (word.includes(' ')) return;
+        
+        if (message.author.id === game.lastPlayerId) {
+            const reply = await message.reply('⚠️ Bạn vừa đi lượt trước rồi, hãy đợi người khác nhé!');
+            setTimeout(() => reply.delete().catch(console.error), 5000);
+            return;
+        }
+
+        const requiredLetter = game.lastWord.slice(-1);
+
+        if (word.charAt(0) !== requiredLetter) {
+            const reply = await message.reply(`❌ Sai chữ rồi! Từ tiếp theo phải bắt đầu bằng chữ **"${requiredLetter}"**.`);
+            setTimeout(() => reply.delete().catch(console.error), 5000);
+            await message.react('❌');
+            return;
+        }
+
+        if (game.usedWords.has(word)) {
+            const reply = await message.reply(`❌ Từ **"${word}"** đã được dùng rồi!`);
+            setTimeout(() => reply.delete().catch(console.error), 5000);
+            await message.react('❌');
+            return;
+        }
+
+        await message.react('✅');
+        
+        game.lastWord = word;
+        game.lastPlayerId = message.author.id;
+        game.usedWords.add(word);
+        
+        const nextLetter = word.slice(-1);
+        await message.channel.send(`Từ tiếp theo bắt đầu bằng chữ **"${nextLetter}"**.`);
+        
+        noituGames.set(message.channel.id, game);
+        return; 
+    }
+
     if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
     const messageContent = message.content.toLowerCase();
     if (FORBIDDEN_WORDS.some(word => messageContent.includes(word))) {
