@@ -32,7 +32,6 @@ const DEFAULT_FEEDBACK_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_ROLE_ID = '1412090993909563534';
 const WELCOME_CHANNEL_ID = '1413874004690997378';
 const GOODBYE_CHANNEL_ID = '1413893224266993818';
-const AUTO_ROLE_IDS = ['1413900211708756008', '1413924595911884800', '1413924235549610025', '1413924549644259499', '1413929850707771564', '1413930005003763732'];
 const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif';
 const CHAT_CHANNEL_ID = '1413876927936331878';
 const SUPPORT_CHANNEL_ID = '1413878121995960361';
@@ -1045,9 +1044,8 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ================================================================= //
-// --- CÁC SỰ KIỆN KHÁC ---
+// --- SỰ KIỆN: TỰ ĐỘNG KIỂM DUYỆT TIN NHẮN (AUTO-MOD) ---
 // ================================================================= //
-
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
     if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
@@ -1083,6 +1081,9 @@ client.on('messageCreate', async message => {
     }
 });
 
+// ================================================================= //
+// --- SỰ KIỆN: QUẢN LÝ KÊNH THOẠI ---
+// ================================================================= //
 client.on('voiceStateUpdate', (oldState, newState) => {
     if (newState.member.user.bot && newState.id !== client.user.id) return;
     if (oldState.channelId && oldState.channel.members.size === 1 && oldState.channel.members.has(client.user.id)) {
@@ -1095,8 +1096,13 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     }
 });
 
+// ================================================================= //
+// --- SỰ KIỆN: THÀNH VIÊN MỚI THAM GIA SERVER ---
+// ================================================================= //
 client.on('guildMemberAdd', async member => {
     if (member.user.bot) return;
+    
+    // Gửi tin nhắn chào mừng
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
     if (channel) {
         const welcomeImages = ['https://i.pinimg.com/originals/c2/ce/2d/c2ce2d82a11c90b05ad4abd796ef2fff.gif', 'https://giffiles.alphacoders.com/203/203432.gif', 'https://gifsec.com/wp-content/uploads/2022/09/welcome-gif-24.gif', 'https://i.pinimg.com/originals/8d/ac/4f/8dac4f8274a9ef0381d12b0ca30e1956.gif'];
@@ -1108,15 +1114,8 @@ client.on('guildMemberAdd', async member => {
             console.error("Lỗi khi gửi tin nhắn chào mừng:", error);
         }
     }
-    for (const roleId of AUTO_ROLE_IDS) {
-        try {
-            const role = member.guild.roles.cache.get(roleId);
-            if (role) await member.roles.add(role);
-            else console.warn(`Không tìm thấy vai trò tự động với ID: ${roleId}`);
-        } catch (error) {
-            console.error(`Lỗi khi tự động gán vai trò ID ${roleId} cho ${member.user.tag}:`, error);
-        }
-    }
+    
+    // Gửi thông báo vào kênh chat chung
     const generalChatChannel = member.guild.channels.cache.get(GENERAL_CHAT_CHANNEL_ID);
     if (generalChatChannel) {
         try {
@@ -1128,6 +1127,9 @@ client.on('guildMemberAdd', async member => {
     }
 });
 
+// ================================================================= //
+// --- SỰ KIỆN: THÀNH VIÊN RỜI KHỎI SERVER ---
+// ================================================================= //
 client.on('guildMemberRemove', async member => {
     if (member.user.bot) return;
     const channel = member.guild.channels.cache.get(GOODBYE_CHANNEL_ID);
