@@ -675,6 +675,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton()) {
         const customId = interaction.customId;
 
+        // Hiển thị menu chọn loại ticket
         if (customId === 'show_ticket_options') {
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('select_ticket_category')
@@ -693,15 +694,10 @@ client.on('interactionCreate', async interaction => {
                         emoji: '<a:Purp_Alert:1413004990037098547>'
                     }
                 ]);
-
             const row = new ActionRowBuilder().addComponents(selectMenu);
-
-            await interaction.reply({
-                content: '**Bạn cần hỗ trợ về vấn đề gì? Hãy chọn ở danh sách dưới nhé ! <:PridecordWarning:1412665674026717207> **',
-                components: [row],
-                ephemeral: true 
-            });
+            await interaction.reply({ content: '**Bạn cần hỗ trợ về vấn đề gì? Hãy chọn ở danh sách dưới nhé ! <:PridecordWarning:1412665674026717207> **', components: [row], ephemeral: true });
         }
+        // Đóng ticket
         else if (customId === 'close_ticket') {
             if (!interaction.member.roles.cache.has(SUPPORT_ROLE_ID) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                 return interaction.reply({ content: 'Chỉ đội ngũ hỗ trợ mới có thể đóng ticket.', ephemeral: true });
@@ -1033,40 +1029,69 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isStringSelectMenu()) {
         const customId = interaction.customId;
 
+        // Xử lý menu ticket
         if (customId === 'select_ticket_category') {
             await interaction.deferReply({ ephemeral: true });
             const selectedValue = interaction.values[0];
             let categoryId, ticketType, welcomeMessage, ticketContent;
+
+            // Xác định thông tin dựa trên lựa chọn
             switch (selectedValue) {
-                case 'technical_support': categoryId = SUPPORT_TICKET_CATEGORY_ID; ticketType = 'hỗ-trợ'; welcomeMessage = `Hỗ trợ bạn về vấn đề **Kỹ thuật/Chung**.`; ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`; break;
-                case 'admin_contact': categoryId = ADMIN_TICKET_CATEGORY_ID; ticketType = 'admin'; welcomeMessage = `**Cần alo ngay em Phúc**`; ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ gì ạ**`; break;
-                default: return interaction.followUp({ content: 'Lựa chọn không hợp lệ.' });
+                case 'technical_support':
+                    categoryId = SUPPORT_TICKET_CATEGORY_ID;
+                    ticketType = 'hỗ-trợ';
+                    welcomeMessage = `Hỗ trợ bạn về vấn đề **Kỹ thuật/Chung**.`;
+                    ticketContent = `## **Chào ${interaction.user}, Phúc sẽ có mặt ngay để hỗ trợ**`;
+                    break;
+                case 'admin_contact':
+                    categoryId = ADMIN_TICKET_CATEGORY_ID;
+                    ticketType = 'admin';
+                    welcomeMessage = `**Cần alo ngay em Phúc**`;
+                    ticketContent = `## **Chào ${interaction.user}, bạn cần hỗ trợ gì ạ**`;
+                    break;
+                default:
+                    return interaction.followUp({ content: 'Lựa chọn không hợp lệ.' });
             }
-            let ticketCounter = parseInt(db.prepare(`SELECT value FROM settings WHERE key = ?`).get('ticketCounter').value);
-            const ticketChannelName = `${ticketType}-${ticketCounter}`;
+
+            // Lấy và tăng số đếm ticket
+            let ticketCounter;
             try {
-                const ticketChannel = await interaction.guild.channels.create({ name: ticketChannelName, type: ChannelType.GuildText, parent: categoryId, permissionOverwrites: [ { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] }, { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }, { id: SUPPORT_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] } ] });
-                ticketCounter++;
-                db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run(ticketCounter.toString(), 'ticketCounter');
+                 ticketCounter = parseInt(db.prepare(`SELECT value FROM settings WHERE key = ?`).get('ticketCounter').value);
+            } catch (dbError) {
+                console.error("Lỗi khi đọc ticketCounter từ DB:", dbError);
+                return interaction.followUp({ content: 'Lỗi hệ thống: Không thể đọc số đếm ticket từ database.' });
+            }
+
+            const ticketChannelName = `${ticketType}-${ticketCounter}`;
+
+            // Tạo kênh ticket
+            try {
+                const ticketChannel = await interaction.guild.channels.create({
+                    name: ticketChannelName,
+                    type: ChannelType.GuildText,
+                    parent: categoryId, // Quan trọng: ID category phải chính xác
+                    permissionOverwrites: [
+                        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+                        { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+                        { id: SUPPORT_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
+                    ],
+                });
+
+                // Cập nhật lại số đếm
+                db.prepare(`UPDATE settings SET value = ? WHERE key = ?`).run((ticketCounter + 1).toString(), 'ticketCounter');
+
+                // Gửi tin nhắn chào mừng vào kênh mới
                 const ticketWelcomeEmbed = new EmbedBuilder().setColor('#57F287').setTitle(`Ticket ${ticketType.charAt(0).toUpperCase() + ticketType.slice(1)}`).setDescription(`Chào ${interaction.user}, cảm ơn bạn đã liên hệ.\n\nĐội ngũ <@&${SUPPORT_ROLE_ID}> sẽ ${welcomeMessage}`).setTimestamp();
                 const closeButton = new ButtonBuilder().setCustomId('close_ticket').setLabel('Đóng Ticket').setStyle(ButtonStyle.Danger).setEmoji('<:close51:1413054667021352960>');
                 const row = new ActionRowBuilder().addComponents(closeButton);
                 await ticketChannel.send({ content: ticketContent, embeds: [ticketWelcomeEmbed], components: [row] });
+                
+                // Phản hồi cho người dùng
                 await interaction.followUp({ content: `Đã tạo ticket của bạn tại ${ticketChannel}.` });
-            } catch (error) { console.error("Lỗi khi tạo ticket theo danh mục:", error); await interaction.followUp({ content: 'Đã xảy ra lỗi.' }); }
-        }
-        else if (customId.startsWith('staff_apply_menu_')) {
-            const receivingChannelId = customId.split('_')[3];
-            const guildId = interaction.guild.id;
-            const startButton = new ButtonBuilder().setCustomId(`start_application_form_${guildId}_${receivingChannelId}`).setLabel('Bắt đầu điền Form').setStyle(ButtonStyle.Primary).setEmoji('📝');
-            const cancelButton = new ButtonBuilder().setCustomId('cancel_application').setLabel('Hủy').setStyle(ButtonStyle.Danger).setEmoji('❌');
-            const row = new ActionRowBuilder().addComponents(startButton, cancelButton);
-            try {
-                await interaction.user.send({ content: `Chào bạn, để bắt đầu quá trình đăng ký Staff tại server **${interaction.guild.name}**, vui lòng bấm nút bên dưới.`, components: [row] });
-                await interaction.reply({ content: 'Mình đã gửi hướng dẫn đăng ký vào tin nhắn riêng (DM) của bạn. Hãy kiểm tra nhé!', ephemeral: true });
+
             } catch (error) {
-                console.error("Lỗi khi gửi DM:", error);
-                await interaction.reply({ content: 'Lỗi: Mình không thể gửi tin nhắn riêng cho bạn. Vui lòng kiểm tra cài đặt quyền riêng tư và thử lại.', ephemeral: true });
+                console.error("Lỗi nghiêm trọng khi tạo kênh ticket:", error);
+                await interaction.followUp({ content: 'Đã xảy ra lỗi khi tạo ticket. Vui lòng kiểm tra lại cấu hình (ID Category, quyền của bot) và thử lại.' });
             }
         }
     }
