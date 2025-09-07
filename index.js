@@ -27,7 +27,7 @@ const noituGames = new Map(); // Quản lý các game Nối Từ đang diễn ra
 
 // --- CÁC HẰNG SỐ CẤU HÌNH ---
 const MOD_LOG_CHANNEL_ID = '1413071939395653722';
-const FORBIDDEN_WORDS = ['lồn', 'cặc', 'badword', 'ngu',];
+const FORBIDDEN_WORDS = ['lồn', 'cặc', 'ngu',];
 const TIMEOUT_DURATION = '60m';
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_ROLE_ID = '1412090993909563534';
