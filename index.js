@@ -27,7 +27,6 @@ const noituGames = new Map(); // Quản lý các game Nối Từ đang diễn ra
 
 // --- CÁC HẰNG SỐ CẤU HÌNH ---
 const MOD_LOG_CHANNEL_ID = '1413071939395653722';
-// FORBIDDEN_WORDS đã bị xóa
 const TIMEOUT_DURATION = '60m';
 const DEFAULT_FEEDBACK_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_ROLE_ID = '1412090993909563534';
@@ -259,7 +258,7 @@ client.once('ready', () => {
 
 
 // ================================================================= //
-// --- TRÌNH LẮNG NGHE TƯƠNG TÁC DUY NHẤT (ĐÃ SỬA LỖI) ---
+// --- TRÌNH LẮNG NGHE TƯƠNG TÁC DUY NHẤT ---
 // ================================================================= //
 client.on('interactionCreate', async interaction => {
 
@@ -539,7 +538,6 @@ client.on('interactionCreate', async interaction => {
                 const game = noituGames.get(channel.id);
                 noituGames.delete(channel.id);
 
-                // --- THAY ĐỔI: Tuyên bố người thắng cuộc ---
                 if (game.lastPlayerId === client.user.id) {
                      return interaction.reply({ content: '✅ Trò chơi đã kết thúc. Chưa có ai trả lời nên không có người thắng cuộc.' });
                 } else {
