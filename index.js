@@ -268,8 +268,8 @@ client.on('interactionCreate', async interaction => {
             const channelId = interaction.customId.split('_')[1];
             const tieuDe = interaction.fields.getTextInputValue('tieuDeInput');
             const noiDung = interaction.fields.getTextInputValue('noiDungInput');
-            const danhGia = interaction.fields.getTextInputValue('danhGiaInput') || 'Chưa đánh giá';
-            const feedbackEmbed = new EmbedBuilder().setColor('Green').setTitle(`📝 Phản hồi mới: ${tieuDe}`).setDescription(noiDung).addFields({ name: 'Đánh giá', value: `**${danhGia}**` }).setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() }).setTimestamp();
+            const noiDung2 = interaction.fields.getTextInputValue('noiDung2Input') || 'Chưa nội dung';
+            const feedbackEmbed = new EmbedBuilder().setColor('Green').setTitle(`📝 Phản hồi mới: ${tieuDe}`).setDescription(noiDung).addFields({ name: 'Nội dung 2', value: `**${noiDung2}**` }).setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() }).setTimestamp();
             try {
                 const channel = await client.channels.fetch(channelId);
                 if (channel) {
@@ -324,8 +324,8 @@ client.on('interactionCreate', async interaction => {
             const modal = new ModalBuilder().setCustomId(`feedbackModal_${feedbackChannelId}`).setTitle('Gửi phản hồi cho Phúc');
             const tieuDeInput = new TextInputBuilder().setCustomId('tieuDeInput').setLabel("Tên của bạn ?").setStyle(TextInputStyle.Short).setPlaceholder('Ghi ở đây !').setRequired(true);
             const noiDungInput = new TextInputBuilder().setCustomId('noiDungInput').setLabel("Nội dung").setStyle(TextInputStyle.Paragraph).setPlaceholder('Bạn muốn nói điều gì ? Hãy ghi ở đây !').setRequired(true).setMinLength(10);
-            const danhGiaInput = new TextInputBuilder().setCustomId('danhGiaInput').setLabel("Nội dung 2").setStyle(TextInputStyle.Paragraph).setPlaceholder('Bạn muốn nói điều gì ? Hãy ghi ở đây ! Không có thì bỏ trống.').setRequired(false);
-            modal.addComponents(new ActionRowBuilder().addComponents(tieuDeInput), new ActionRowBuilder().addComponents(noiDungInput), new ActionRowBuilder().addComponents(danhGiaInput));
+            const noiDung2Input = new TextInputBuilder().setCustomId('noiDung2Input').setLabel("Nội dung 2").setStyle(TextInputStyle.Paragraph).setPlaceholder('Bạn muốn nói điều gì ? Hãy ghi ở đây ! Không có thì bỏ trống.').setRequired(false);
+            modal.addComponents(new ActionRowBuilder().addComponents(tieuDeInput), new ActionRowBuilder().addComponents(noiDungInput), new ActionRowBuilder().addComponents(noiDung2Input));
             await interaction.showModal(modal);
         } else if (customId.startsWith('start_application_form_')) {
             const ids = customId.split('_');
@@ -974,7 +974,7 @@ client.on('interactionCreate', async interaction => {
             const formEmbed = new EmbedBuilder().setTitle(tieuDe).setDescription(moTa);
             if (mauSac) formEmbed.setColor(mauSac);
             if (hinhAnh) formEmbed.setImage(hinhAnh);
-            const openFormButton = new ButtonBuilder().setCustomId(`open_feedback_form_${feedbackChannelId}`).setLabel('Hỗ Trợ').setStyle(ButtonStyle.Danger).setEmoji('<:email49:1412322374891602020>');
+            const openFormButton = new ButtonBuilder().setCustomId(`open_feedback_form_${feedbackChannelId}`).setLabel('Pấm Nút').setStyle(ButtonStyle.Primary).setEmoji('<:email49:1412322374891602020>');
             const row = new ActionRowBuilder().addComponents(openFormButton);
             const messagePayload = { embeds: [formEmbed], components: [row] };
             if (content) messagePayload.content = content;
