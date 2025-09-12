@@ -47,10 +47,7 @@ function setupDatabase() {
     db.exec(`CREATE TABLE IF NOT EXISTS temp_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, guildId TEXT NOT NULL, roleId TEXT NOT NULL, expiresAt INTEGER NOT NULL)`);
     db.exec(`CREATE TABLE IF NOT EXISTS warnings (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, guildId TEXT NOT NULL, reason TEXT, timestamp INTEGER)`);
 
-    // Xóa bảng giveaways cũ để tạo lại với cấu trúc mới, nâng cấp
-    db.exec(`DROP TABLE IF EXISTS giveaways`);
-
-    // Tạo lại bảng giveaways với các cột nâng cao
+    // Tạo bảng giveaways nếu chưa tồn tại
     db.exec(`CREATE TABLE IF NOT EXISTS giveaways (
         messageId TEXT PRIMARY KEY,
         channelId TEXT NOT NULL,
@@ -67,7 +64,7 @@ function setupDatabase() {
         button_style TEXT DEFAULT 'SUCCESS'
     )`);
 
-    // Bảng mới để lưu trữ những người đã tham gia giveaway
+    // Tạo bảng người tham gia nếu chưa tồn tại
     db.exec(`CREATE TABLE IF NOT EXISTS giveaway_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         giveawayId TEXT NOT NULL,
@@ -224,7 +221,6 @@ async function endGiveaway(messageId) {
             .setColor('Red')
             .setTitle(`❌ GIVEAWAY ĐÃ KẾT THÚC: ${giveaway.prize} ❌`);
         
-        // Xóa các field cũ và chỉ giữ lại field người thắng
         endedEmbed.setFields([]); 
         
         let winnerText;
@@ -246,8 +242,6 @@ async function endGiveaway(messageId) {
         
         endedEmbed.addFields({ name: '👤 Tổ chức bởi', value: `<@${giveaway.hostedBy}>` });
 
-
-        // Vô hiệu hóa nút
         const disabledButton = ButtonBuilder.from(message.components[0].components[0]).setDisabled(true).setStyle(ButtonStyle.Secondary);
         const row = new ActionRowBuilder().addComponents(disabledButton);
         
@@ -382,8 +376,8 @@ client.on('interactionCreate', async interaction => {
             const advancedOptions = interaction.fields.getTextInputValue('gw_advanced');
 
             const durationMs = ms(durationStr);
-            if (!durationMs || durationMs <= 0) return interaction.followUp({ content: 'Thời gian không hợp lệ. Vui lòng dùng định dạng như "10m", "1h", "2d".' });
-            if (isNaN(winnerCount) || winnerCount < 1) return interaction.followUp({ content: 'Số người thắng phải là một con số lớn hơn 0.' });
+            if (!durationMs || durationMs <= 0) return interaction.editReply({ content: 'Thời gian không hợp lệ. Vui lòng dùng định dạng như "10m", "1h", "2d".' });
+            if (isNaN(winnerCount) || winnerCount < 1) return interaction.editReply({ content: 'Số người thắng phải là một con số lớn hơn 0.' });
 
             let buttonLabel = 'Tham gia';
             let buttonEmoji = '🎉';
@@ -1370,7 +1364,6 @@ client.on('messageCreate', async message => {
         return; 
     }
 
-    // --- TOÀN BỘ LOGIC AUTO-MOD ĐÃ BỊ XÓA KHỎI ĐÂY ---
 });
 
 // ================================================================= //
@@ -1441,4 +1434,3 @@ client.on('guildMemberRemove', async member => {
 
 // Đăng nhập bot
 client.login(process.env.DISCORD_TOKEN);
-}
