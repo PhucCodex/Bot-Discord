@@ -46,9 +46,38 @@ function setupDatabase() {
     db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
     db.exec(`CREATE TABLE IF NOT EXISTS temp_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, guildId TEXT NOT NULL, roleId TEXT NOT NULL, expiresAt INTEGER NOT NULL)`);
     db.exec(`CREATE TABLE IF NOT EXISTS warnings (id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT NOT NULL, guildId TEXT NOT NULL, reason TEXT, timestamp INTEGER)`);
-    db.exec(`CREATE TABLE IF NOT EXISTS giveaways (messageId TEXT PRIMARY KEY, channelId TEXT NOT NULL, guildId TEXT NOT NULL, prize TEXT NOT NULL, winnerCount INTEGER NOT NULL, endsAt INTEGER NOT NULL, hostedBy TEXT NOT NULL, ended INTEGER DEFAULT 0)`);
+
+    // Xóa bảng giveaways cũ để tạo lại với cấu trúc mới, nâng cấp
+    db.exec(`DROP TABLE IF EXISTS giveaways`);
+
+    // Tạo lại bảng giveaways với các cột nâng cao
+    db.exec(`CREATE TABLE IF NOT EXISTS giveaways (
+        messageId TEXT PRIMARY KEY,
+        channelId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        prize TEXT NOT NULL,
+        winnerCount INTEGER NOT NULL,
+        endsAt INTEGER NOT NULL,
+        hostedBy TEXT NOT NULL,
+        ended INTEGER DEFAULT 0,
+        requirements_text TEXT,
+        required_roles TEXT,
+        button_label TEXT DEFAULT 'Tham gia',
+        button_emoji TEXT,
+        button_style TEXT DEFAULT 'SUCCESS'
+    )`);
+
+    // Bảng mới để lưu trữ những người đã tham gia giveaway
+    db.exec(`CREATE TABLE IF NOT EXISTS giveaway_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        giveawayId TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        UNIQUE(giveawayId, userId),
+        FOREIGN KEY (giveawayId) REFERENCES giveaways (messageId) ON DELETE CASCADE
+    )`);
+
     db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`).run('ticketCounter', '1');
-    console.log('✅ Database đã được thiết lập và sẵn sàng.');
+    console.log('✅ Database đã được thiết lập và sẵn sàng (với hệ thống Giveaway nâng cấp).');
 }
 setupDatabase();
 
@@ -85,7 +114,26 @@ const commands = [
     new SlashCommandBuilder().setName('resettickets').setDescription('Reset số đếm của ticket về lại 1.').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('warnings').setDescription('Kiểm tra số lần cảnh cáo của một thành viên.').addUserOption(opt => opt.setName('người').setDescription('Thành viên cần kiểm tra.').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
     new SlashCommandBuilder().setName('resetwarnings').setDescription('Xóa toàn bộ cảnh cáo của một thành viên.').addUserOption(opt => opt.setName('người').setDescription('Thành viên cần xóa cảnh cáo.').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    new SlashCommandBuilder().setName('giveaway').setDescription('Quản lý hệ thống giveaway.').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild).setDMPermission(false).addSubcommand(sub => sub.setName('start').setDescription('Bắt đầu một giveaway mới.').addStringOption(opt => opt.setName('duration').setDescription('Thời gian giveaway (vd: 1d, 12h, 30m)').setRequired(true)).addIntegerOption(opt => opt.setName('winners').setDescription('Số lượng người thắng.').setRequired(true).setMinValue(1)).addStringOption(opt => opt.setName('prize').setDescription('Giải thưởng là gì?').setRequired(true)).addChannelOption(opt => opt.setName('channel').setDescription('Kênh để tổ chức giveaway (mặc định là kênh hiện tại).').addChannelTypes(ChannelType.GuildText).setRequired(false))).addSubcommand(sub => sub.setName('reroll').setDescription('Chọn lại một người thắng khác cho giveaway đã kết thúc.').addStringOption(opt => opt.setName('message_id').setDescription('ID tin nhắn của giveaway đã kết thúc.').setRequired(true))).addSubcommand(sub => sub.setName('end').setDescription('Kết thúc một giveaway ngay lập tức.').addStringOption(opt => opt.setName('message_id').setDescription('ID tin nhắn của giveaway đang chạy.').setRequired(true))),
+    // --- LỆNH GIVEAWAY NÂNG CẤP ---
+    new SlashCommandBuilder().setName('giveaway')
+        .setDescription('Quản lý hệ thống giveaway chuyên nghiệp.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .setDMPermission(false)
+        .addSubcommand(sub =>
+            sub.setName('create')
+            .setDescription('Mở form để tạo một giveaway mới với nhiều tùy chọn.')
+        )
+        .addSubcommand(sub =>
+            sub.setName('reroll')
+            .setDescription('Chọn lại một người thắng khác cho giveaway đã kết thúc.')
+            .addStringOption(opt => opt.setName('message_id').setDescription('ID tin nhắn của giveaway đã kết thúc.').setRequired(true))
+        )
+        .addSubcommand(sub =>
+            sub.setName('end')
+            .setDescription('Kết thúc một giveaway ngay lập tức.')
+            .addStringOption(opt => opt.setName('message_id').setDescription('ID tin nhắn của giveaway đang chạy.').setRequired(true))
+        ),
+    // ----------------------------
     new SlashCommandBuilder().setName('help').setDescription('Hiển thị danh sách các lệnh hoặc thông tin chi tiết về một lệnh cụ thể.').addStringOption(opt => opt.setName('lệnh').setDescription('Tên lệnh bạn muốn xem chi tiết.').setRequired(false)),
     new SlashCommandBuilder().setName('play').setDescription('Phát một bài hát từ YouTube.').addStringOption(opt => opt.setName('bài_hát').setDescription('Tên bài hát hoặc link YouTube.').setRequired(true)),
     new SlashCommandBuilder().setName('skip').setDescription('Bỏ qua bài hát hiện tại.'),
@@ -158,33 +206,46 @@ async function playSong(guild, song) {
     }
 }
 
-// Hàm kết thúc giveaway
+// Hàm kết thúc giveaway (PHIÊN BẢN NÂNG CẤP)
 async function endGiveaway(messageId) {
     const giveaway = db.prepare('SELECT * FROM giveaways WHERE messageId = ? AND ended = 0').get(messageId);
     if (!giveaway) return;
+
     db.prepare('UPDATE giveaways SET ended = 1 WHERE messageId = ?').run(messageId);
+
     const channel = await client.channels.cache.get(giveaway.channelId);
     if (!channel) return;
+
     try {
         const message = await channel.messages.fetch(messageId);
-        const reaction = message.reactions.cache.get('🎉');
-        const users = await reaction.users.fetch();
-        const participants = users.filter(user => !user.bot).map(user => user.id);
+        const participants = db.prepare('SELECT userId FROM giveaway_entries WHERE giveawayId = ?').all(messageId).map(row => row.userId);
+
+        const endedEmbed = EmbedBuilder.from(message.embeds[0]).setColor('Red').setTitle(`❌ GIVEAWAY ĐÃ KẾT THÚC: ${giveaway.prize} ❌`);
+
+        let winnerText;
         if (participants.length === 0) {
-            const endedEmbed = EmbedBuilder.from(message.embeds[0]).setColor('Red').setDescription(`Không có ai tham gia, không thể chọn người thắng!`);
-            await message.edit({ embeds: [endedEmbed], components: [] });
-            return channel.send(`Giveaway cho **${giveaway.prize}** đã kết thúc mà không có người tham gia.`);
+            winnerText = `Giveaway cho **${giveaway.prize}** đã kết thúc mà không có ai tham gia.`;
+            endedEmbed.setDescription(`**Tổ chức bởi:** <@${giveaway.hostedBy}>\n\nKhông có ai tham gia, không thể chọn người thắng!`);
+        } else {
+            const winners = [];
+            const pool = [...participants];
+            for (let i = 0; i < giveaway.winnerCount && pool.length > 0; i++) {
+                const winnerIndex = Math.floor(Math.random() * pool.length);
+                winners.push(pool.splice(winnerIndex, 1)[0]);
+            }
+            const winnerTags = winners.map(id => `<@${id}>`).join(', ');
+            winnerText = `🎉 Chúc mừng ${winnerTags}! Bạn đã thắng **${giveaway.prize}**!`;
+            endedEmbed.setDescription(`**Tổ chức bởi:** <@${giveaway.hostedBy}>\n\n**Giveaway đã kết thúc!**`);
+            endedEmbed.addFields({ name: '🏆 Người thắng cuộc', value: winnerTags });
         }
-        const winners = [];
-        for (let i = 0; i < giveaway.winnerCount; i++) {
-            if (participants.length === 0) break;
-            const winnerIndex = Math.floor(Math.random() * participants.length);
-            winners.push(participants.splice(winnerIndex, 1)[0]);
-        }
-        const winnerTags = winners.map(id => `<@${id}>`).join(', ');
-        const endedEmbed = EmbedBuilder.from(message.embeds[0]).setColor('Gold').setDescription(`**Giveaway đã kết thúc!**\nNgười thắng: ${winnerTags}`);
-        await message.edit({ embeds: [endedEmbed], components: [] });
-        await channel.send(`🎉 Chúc mừng ${winnerTags}! Bạn đã thắng **${giveaway.prize}**! 🎉`);
+
+        // Vô hiệu hóa nút
+        const disabledButton = ButtonBuilder.from(message.components[0].components[0]).setDisabled(true).setStyle(ButtonStyle.Secondary);
+        const row = new ActionRowBuilder().addComponents(disabledButton);
+        
+        await message.edit({ embeds: [endedEmbed], components: [row] });
+        await channel.send(winnerText);
+
     } catch (error) {
         console.error(`Lỗi khi kết thúc giveaway (ID: ${messageId}):`, error);
         channel.send(`Đã có lỗi khi cố gắng kết thúc giveaway cho **${giveaway.prize}**. Vui lòng kiểm tra lại tin nhắn gốc.`);
@@ -302,6 +363,87 @@ client.on('interactionCreate', async interaction => {
                 await interaction.followUp({ content: '❌ Đã có lỗi xảy ra khi gửi đơn của bạn.' });
             }
         }
+        // --- XỬ LÝ FORM GIVEAWAY MỚI ---
+        else if (interaction.customId === 'giveaway_create_modal') {
+            await interaction.deferReply({ ephemeral: true });
+
+            const prize = interaction.fields.getTextInputValue('gw_prize');
+            const durationStr = interaction.fields.getTextInputValue('gw_duration');
+            const winnerCount = parseInt(interaction.fields.getTextInputValue('gw_winner_count'));
+            const requirementsText = interaction.fields.getTextInputValue('gw_requirements');
+            const advancedOptions = interaction.fields.getTextInputValue('gw_advanced');
+
+            const durationMs = ms(durationStr);
+            if (!durationMs || durationMs <= 0) return interaction.followUp({ content: 'Thời gian không hợp lệ. Vui lòng dùng định dạng như "10m", "1h", "2d".' });
+            if (isNaN(winnerCount) || winnerCount < 1) return interaction.followUp({ content: 'Số người thắng phải là một con số lớn hơn 0.' });
+
+            let buttonLabel = 'Tham gia';
+            let buttonEmoji = '🎉';
+            let requiredRoles = null;
+
+            advancedOptions.split('\n').forEach(line => {
+                const [key, ...valueParts] = line.split(':');
+                const value = valueParts.join(':').trim();
+                if (key.trim().toLowerCase() === 'button') {
+                    const emojiMatch = value.match(/(\p{Emoji_Presentation}|\p{Extended_Pictographic})/u);
+                    if (emojiMatch) {
+                        buttonEmoji = emojiMatch[0];
+                        buttonLabel = value.replace(emojiMatch[0], '').trim();
+                    } else {
+                        buttonLabel = value;
+                    }
+                } else if (key.trim().toLowerCase() === 'role') {
+                    const roleIds = value.match(/<@&(\d+)>/g)?.map(mention => mention.replace(/[<@&>]/g, ''));
+                    if (roleIds && roleIds.length > 0) {
+                        requiredRoles = JSON.stringify(roleIds);
+                    }
+                }
+            });
+
+            const endsAt = Date.now() + durationMs;
+
+            const giveawayEmbed = new EmbedBuilder()
+                .setColor('Aqua')
+                .setTitle(`🎉 GIVEAWAY: ${prize} 🎉`)
+                .setDescription(`Bấm nút bên dưới để tham gia!\n\n**Tổ chức bởi:** ${interaction.user}`)
+                .addFields(
+                    { name: 'Kết thúc', value: `<t:${Math.floor(endsAt / 1000)}:R>`, inline: true },
+                    { name: 'Số người thắng', value: `**${winnerCount}** người`, inline: true }
+                )
+                .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` })
+                .setTimestamp(endsAt);
+
+            if (requirementsText) {
+                giveawayEmbed.addFields({ name: '📜 Yêu cầu', value: requirementsText, inline: false });
+            }
+
+            const joinButton = new ButtonBuilder()
+                .setLabel(buttonLabel)
+                .setStyle(ButtonStyle.Success);
+            if (buttonEmoji) joinButton.setEmoji(buttonEmoji);
+
+            try {
+                // Tạm thời đặt customId để gửi tin nhắn
+                const tempButton = joinButton.setCustomId(`gw_join_temp_${interaction.id}`);
+                const message = await interaction.channel.send({ embeds: [giveawayEmbed], components: [new ActionRowBuilder().addComponents(tempButton)] });
+
+                // Cập nhật customId của nút với ID tin nhắn thật để định danh chính xác giveaway
+                const finalButton = joinButton.setCustomId(`gw_join_${message.id}`);
+                await message.edit({ components: [new ActionRowBuilder().addComponents(finalButton)] });
+
+                // Lưu vào database
+                db.prepare(`INSERT INTO giveaways (messageId, channelId, guildId, prize, winnerCount, endsAt, hostedBy, requirements_text, required_roles, button_label, button_emoji) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(message.id, interaction.channel.id, interaction.guild.id, prize, winnerCount, endsAt, interaction.user.id, requirementsText, requiredRoles, buttonLabel, buttonEmoji);
+
+                // Lên lịch kết thúc
+                setTimeout(() => endGiveaway(message.id), durationMs);
+
+                await interaction.followUp({ content: `✅ Đã tạo thành công giveaway tại ${interaction.channel}!` });
+            } catch (error) {
+                console.error("Lỗi khi tạo giveaway:", error);
+                await interaction.followUp({ content: 'Đã có lỗi xảy ra. Vui lòng kiểm tra quyền của bot trong kênh đó.' });
+            }
+        }
+        // ------------------------------------
         return;
     }
 
@@ -412,6 +554,59 @@ client.on('interactionCreate', async interaction => {
             const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]).setColor('Red').setTitle(`❌ Đã bị từ chối bởi ${interaction.user.tag}`);
             await interaction.editReply({ embeds: [originalEmbed], components: [] });
         }
+        // --- XỬ LÝ NÚT THAM GIA GIVEAWAY MỚI ---
+        else if (customId.startsWith('gw_join_')) {
+            const messageId = customId.split('_')[2];
+            const giveaway = db.prepare('SELECT * FROM giveaways WHERE messageId = ?').get(messageId);
+
+            if (!giveaway || giveaway.ended) {
+                return interaction.reply({ content: 'Rất tiếc, giveaway này đã kết thúc hoặc không còn tồn tại.', ephemeral: true });
+            }
+
+            // --- Kiểm tra các yêu cầu ---
+            if (giveaway.required_roles) {
+                const requiredRoles = JSON.parse(giveaway.required_roles);
+                const hasAllRoles = requiredRoles.every(roleId => interaction.member.roles.cache.has(roleId));
+                if (!hasAllRoles) {
+                    const roleMentions = requiredRoles.map(id => `<@&${id}>`).join(', ');
+                    return interaction.reply({ content: `Bạn cần có các vai trò sau để tham gia: ${roleMentions}`, ephemeral: true });
+                }
+            }
+
+            // --- Ghi danh hoặc Rút lui ---
+            const existingEntry = db.prepare('SELECT * FROM giveaway_entries WHERE giveawayId = ? AND userId = ?').get(messageId, interaction.user.id);
+            if (existingEntry) {
+                db.prepare('DELETE FROM giveaway_entries WHERE giveawayId = ? AND userId = ?').run(messageId, interaction.user.id);
+                await interaction.reply({ content: 'Bạn đã rút lui khỏi giveaway.', ephemeral: true });
+            } else {
+                db.prepare('INSERT INTO giveaway_entries (giveawayId, userId) VALUES (?, ?)').run(messageId, interaction.user.id);
+                await interaction.reply({ content: '✅ Chúc may mắn! Bạn đã tham gia giveaway thành công!', ephemeral: true });
+            }
+
+            // --- Cập nhật số người tham gia trên embed ---
+            try {
+                const entryCount = db.prepare('SELECT COUNT(*) as count FROM giveaway_entries WHERE giveawayId = ?').get(messageId).count;
+                const message = await interaction.channel.messages.fetch(messageId);
+                if (!message) return;
+
+                const originalEmbed = message.embeds[0];
+                const updatedEmbed = EmbedBuilder.from(originalEmbed);
+                const participantsFieldIndex = originalEmbed.fields.findIndex(field => field.name === '👥 Số người tham gia');
+
+                const newField = { name: '👥 Số người tham gia', value: `**${entryCount}** người`, inline: true };
+
+                if (participantsFieldIndex > -1) {
+                    updatedEmbed.spliceFields(participantsFieldIndex, 1, newField);
+                } else {
+                    updatedEmbed.addFields(newField);
+                }
+                await message.edit({ embeds: [updatedEmbed] });
+            } catch (e) {
+                // Bỏ qua lỗi nếu không cập nhật được (ví dụ: tin nhắn đã bị xóa)
+                 console.log("Không thể cập nhật số người tham gia giveaway:", e.message);
+            }
+        }
+        // ------------------------------------
         return;
     }
 
@@ -1026,58 +1221,65 @@ client.on('interactionCreate', async interaction => {
             db.prepare('DELETE FROM warnings WHERE userId = ? AND guildId = ?').run(target.id, interaction.guild.id);
             await interaction.followUp({ content: `✅ Đã xóa toàn bộ cảnh cáo cho ${target}.` });
         }
+        // --- XỬ LÝ LỆNH GIVEAWAY NÂNG CẤP ---
         else if (commandName === 'giveaway') {
             const subcommand = interaction.options.getSubcommand();
-            if (subcommand === 'start') {
-                await interaction.deferReply({ ephemeral: true });
-                const durationStr = interaction.options.getString('duration');
-                const winnerCount = interaction.options.getInteger('winners');
-                const prize = interaction.options.getString('prize');
-                const channel = interaction.options.getChannel('channel') || interaction.channel;
-                const durationMs = ms(durationStr);
-                if (!durationMs || durationMs <= 0) return interaction.followUp({ content: 'Thời gian không hợp lệ. Vui lòng dùng định dạng như "10m", "1h", "2d".' });
-                const endsAt = Date.now() + durationMs;
-                const giveawayEmbed = new EmbedBuilder().setColor('Aqua').setTitle('🎉 GIVEAWAY 🎉').setDescription(`**Giải thưởng:** ${prize}\n` + `**Số người thắng:** ${winnerCount}\n` + `**Kết thúc:** <t:${Math.floor(endsAt / 1000)}:R>\n` + `**Tổ chức bởi:** ${interaction.user}\n\n` + `React với 🎉 để tham gia!`).setTimestamp(endsAt).setFooter({ text: 'Giveaway sẽ kết thúc vào lúc' });
-                try {
-                    const message = await channel.send({ embeds: [giveawayEmbed] });
-                    await message.react('🎉');
-                    db.prepare('INSERT INTO giveaways (messageId, channelId, guildId, prize, winnerCount, endsAt, hostedBy) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                      .run(message.id, channel.id, guild.id, prize, winnerCount, endsAt, user.id);
-                    setTimeout(() => endGiveaway(message.id), durationMs);
-                    await interaction.followUp({ content: `✅ Đã bắt đầu giveaway tại kênh ${channel}!` });
-                } catch (error) {
-                    console.error('Lỗi khi bắt đầu giveaway:', error);
-                    await interaction.followUp({ content: 'Đã có lỗi xảy ra. Vui lòng kiểm tra quyền của bot tại kênh đó.' });
-                }
+            if (subcommand === 'create') {
+                const modal = new ModalBuilder()
+                    .setCustomId('giveaway_create_modal')
+                    .setTitle('Tạo Giveaway Mới');
+
+                const prizeInput = new TextInputBuilder().setCustomId('gw_prize').setLabel("Giải thưởng là gì?").setStyle(TextInputStyle.Short).setPlaceholder('Ví dụ: Discord Nitro 1 tháng').setRequired(true);
+                const durationInput = new TextInputBuilder().setCustomId('gw_duration').setLabel("Thời gian giveaway?").setStyle(TextInputStyle.Short).setPlaceholder('Ví dụ: 1d, 12h, 30m').setRequired(true);
+                const winnerCountInput = new TextInputBuilder().setCustomId('gw_winner_count').setLabel("Số lượng người thắng?").setStyle(TextInputStyle.Short).setValue('1').setRequired(true);
+                const requirementsInput = new TextInputBuilder().setCustomId('gw_requirements').setLabel("Yêu cầu (hiển thị trên embed)").setStyle(TextInputStyle.Paragraph).setPlaceholder('Ví dụ: Yêu cầu vai trò @Member').setRequired(false);
+                const advancedInput = new TextInputBuilder().setCustomId('gw_advanced').setLabel("Tùy chỉnh Nâng cao (1 dòng/tùy chọn)").setStyle(TextInputStyle.Paragraph).setPlaceholder('role: @RoleID1 @RoleID2\nbutton: 🎁 Bấm vào đây').setRequired(false);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(prizeInput),
+                    new ActionRowBuilder().addComponents(durationInput),
+                    new ActionRowBuilder().addComponents(winnerCountInput),
+                    new ActionRowBuilder().addComponents(requirementsInput),
+                    new ActionRowBuilder().addComponents(advancedInput)
+                );
+                
+                await interaction.showModal(modal);
             }
             else if (subcommand === 'reroll') {
                 await interaction.deferReply({ ephemeral: true });
                 const messageId = interaction.options.getString('message_id');
                 const giveaway = db.prepare('SELECT * FROM giveaways WHERE messageId = ? AND ended = 1').get(messageId);
                 if (!giveaway) return interaction.followUp({ content: 'Không tìm thấy giveaway đã kết thúc với ID này.' });
+                
                 const channel = client.channels.cache.get(giveaway.channelId);
                 if (!channel) return interaction.followUp({ content: 'Không tìm thấy kênh của giveaway.' });
+
                 try {
                     const message = await channel.messages.fetch(messageId);
-                    const reaction = message.reactions.cache.get('🎉');
-                    if (!reaction) return interaction.followUp({ content: 'Không tìm thấy reaction trên tin nhắn giveaway.' });
-                    const users = await reaction.users.fetch();
-                    const oldWinnersString = message.embeds[0].description.split('Người thắng: ')[1];
-                    const oldWinnerIds = oldWinnersString.match(/<@(\d+)>/g).map(tag => tag.slice(2, -1));
-                    const participants = users.filter(u => !u.bot && !oldWinnerIds.includes(u.id)).map(u => u.id);
-                    if (participants.length < giveaway.winnerCount) return interaction.followUp({ content: 'Không đủ người tham gia mới để chọn lại.' });
-                    const newWinners = [];
-                     for (let i = 0; i < giveaway.winnerCount; i++) {
-                        if (participants.length === 0) break;
-                        const winnerIndex = Math.floor(Math.random() * participants.length);
-                        newWinners.push(participants.splice(winnerIndex, 1)[0]);
+                    // Lấy ID người thắng cũ từ embed
+                    const oldWinnerField = message.embeds[0].fields.find(f => f.name === '🏆 Người thắng cuộc');
+                    const oldWinnerIds = oldWinnerField ? oldWinnerField.value.match(/<@(\d+)>/g).map(tag => tag.slice(2, -1)) : [];
+                    
+                    // Lấy tất cả người tham gia, trừ người đã thắng
+                    const participants = db.prepare('SELECT userId FROM giveaway_entries WHERE giveawayId = ?')
+                                        .all(messageId)
+                                        .map(row => row.userId)
+                                        .filter(id => !oldWinnerIds.includes(id));
+
+                    if (participants.length === 0) {
+                        return interaction.followUp({ content: 'Không còn người tham gia nào khác để chọn lại.' });
                     }
-                    const newWinnerTags = newWinners.map(id => `<@${id}>`).join(', ');
-                    await interaction.followUp({ content: `Đã chọn lại người thắng! Chúc mừng ${newWinnerTags}!` });
-                    await channel.send(`🔄 Người thắng mới cho **${giveaway.prize}** là ${newWinnerTags}! Chúc mừng!`);
+                    
+                    const newWinnerIndex = Math.floor(Math.random() * participants.length);
+                    const newWinnerId = participants[newWinnerIndex];
+                    const newWinnerTag = `<@${newWinnerId}>`;
+
+                    await interaction.followUp({ content: `Đã chọn lại người thắng! Chúc mừng ${newWinnerTag}!` });
+                    await channel.send(`🔄 Người thắng mới cho **${giveaway.prize}** là ${newWinnerTag}! Chúc mừng!`);
+
                 } catch (error) {
                     console.error("Lỗi khi reroll giveaway:", error);
-                    await interaction.followUp({ content: 'Đã xảy ra lỗi khi cố gắng reroll.' });
+                    await interaction.followUp({ content: 'Đã xảy ra lỗi khi cố gắng reroll. Hãy chắc chắn ID tin nhắn là đúng.' });
                 }
             }
             else if (subcommand === 'end') {
@@ -1085,8 +1287,8 @@ client.on('interactionCreate', async interaction => {
                 const messageId = interaction.options.getString('message_id');
                 const giveaway = db.prepare('SELECT * FROM giveaways WHERE messageId = ? AND ended = 0').get(messageId);
                 if (!giveaway) return interaction.followUp({ content: 'Không tìm thấy giveaway đang hoạt động với ID này.' });
-                const runningTimeout = client.timeouts.find(t => t._call.args[0] === messageId);
-                if(runningTimeout) clearTimeout(runningTimeout);
+                
+                // Không cần xóa timeout vì chúng ta không dùng client.timeouts
                 await endGiveaway(messageId);
                 await interaction.followUp({ content: '✅ Đã kết thúc giveaway thành công.' });
             }
