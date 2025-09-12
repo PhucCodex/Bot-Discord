@@ -60,7 +60,7 @@ function setupDatabase() {
         endsAt INTEGER NOT NULL,
         hostedBy TEXT NOT NULL,
         ended INTEGER DEFAULT 0,
-        requirements_text TEXT,
+        content_text TEXT,
         required_roles TEXT,
         button_label TEXT DEFAULT 'Tham gia',
         button_emoji TEXT,
@@ -220,12 +220,18 @@ async function endGiveaway(messageId) {
         const message = await channel.messages.fetch(messageId);
         const participants = db.prepare('SELECT userId FROM giveaway_entries WHERE giveawayId = ?').all(messageId).map(row => row.userId);
 
-        const endedEmbed = EmbedBuilder.from(message.embeds[0]).setColor('Red').setTitle(`❌ GIVEAWAY ĐÃ KẾT THÚC: ${giveaway.prize} ❌`);
-
+        const endedEmbed = EmbedBuilder.from(message.embeds[0])
+            .setColor('Red')
+            .setTitle(`❌ GIVEAWAY ĐÃ KẾT THÚC: ${giveaway.prize} ❌`);
+        
+        // Xóa các field cũ và chỉ giữ lại field người thắng
+        endedEmbed.setFields([]); 
+        
         let winnerText;
         if (participants.length === 0) {
             winnerText = `Giveaway cho **${giveaway.prize}** đã kết thúc mà không có ai tham gia.`;
-            endedEmbed.setDescription(`**Tổ chức bởi:** <@${giveaway.hostedBy}>\n\nKhông có ai tham gia, không thể chọn người thắng!`);
+            endedEmbed.addFields({ name: '🏆 Người thắng cuộc', value: 'Không có ai tham gia!' });
+
         } else {
             const winners = [];
             const pool = [...participants];
@@ -235,16 +241,18 @@ async function endGiveaway(messageId) {
             }
             const winnerTags = winners.map(id => `<@${id}>`).join(', ');
             winnerText = `🎉 Chúc mừng ${winnerTags}! Bạn đã thắng **${giveaway.prize}**!`;
-            endedEmbed.setDescription(`**Tổ chức bởi:** <@${giveaway.hostedBy}>\n\n**Giveaway đã kết thúc!**`);
             endedEmbed.addFields({ name: '🏆 Người thắng cuộc', value: winnerTags });
         }
+        
+        endedEmbed.addFields({ name: '👤 Tổ chức bởi', value: `<@${giveaway.hostedBy}>` });
+
 
         // Vô hiệu hóa nút
         const disabledButton = ButtonBuilder.from(message.components[0].components[0]).setDisabled(true).setStyle(ButtonStyle.Secondary);
         const row = new ActionRowBuilder().addComponents(disabledButton);
         
         await message.edit({ embeds: [endedEmbed], components: [row] });
-        await channel.send(winnerText);
+        await channel.send({ content: winnerText, allowedMentions: { users: winners } });
 
     } catch (error) {
         console.error(`Lỗi khi kết thúc giveaway (ID: ${messageId}):`, error);
@@ -370,7 +378,7 @@ client.on('interactionCreate', async interaction => {
             const prize = interaction.fields.getTextInputValue('gw_prize');
             const durationStr = interaction.fields.getTextInputValue('gw_duration');
             const winnerCount = parseInt(interaction.fields.getTextInputValue('gw_winner_count'));
-            const requirementsText = interaction.fields.getTextInputValue('gw_requirements');
+            const contentText = interaction.fields.getTextInputValue('gw_content');
             const advancedOptions = interaction.fields.getTextInputValue('gw_advanced');
 
             const durationMs = ms(durationStr);
@@ -383,16 +391,23 @@ client.on('interactionCreate', async interaction => {
 
             advancedOptions.split('\n').forEach(line => {
                 const [key, ...valueParts] = line.split(':');
+                if (!key) return;
                 const value = valueParts.join(':').trim();
+                
                 if (key.trim().toLowerCase() === 'button') {
-                    const emojiMatch = value.match(/(\p{Emoji_Presentation}|\p{Extended_Pictographic})/u);
+                     // Regex để tìm emoji tùy chỉnh hoặc emoji unicode
+                    const emojiRegex = /^(<a?:\w+:\d+>|\p{Emoji_Presentation}|\p{Extended_Pictographic})/u;
+                    const emojiMatch = value.match(emojiRegex);
+                    
                     if (emojiMatch) {
                         buttonEmoji = emojiMatch[0];
                         buttonLabel = value.replace(emojiMatch[0], '').trim();
                     } else {
                         buttonLabel = value;
+                        buttonEmoji = null; // Không có emoji nếu không khớp
                     }
-                } else if (key.trim().toLowerCase() === 'role') {
+
+                } else if (key.trim().toLowerCase() === 'roles') {
                     const roleIds = value.match(/<@&(\d+)>/g)?.map(mention => mention.replace(/[<@&>]/g, ''));
                     if (roleIds && roleIds.length > 0) {
                         requiredRoles = JSON.stringify(roleIds);
@@ -404,37 +419,39 @@ client.on('interactionCreate', async interaction => {
 
             const giveawayEmbed = new EmbedBuilder()
                 .setColor('Aqua')
-                .setTitle(`🎉 GIVEAWAY: ${prize} 🎉`)
-                .setDescription(`Bấm nút bên dưới để tham gia!\n\n**Tổ chức bởi:** ${interaction.user}`)
+                .setTitle(`🎉 Giveaway: ${prize}`)
+                .setDescription(contentText || 'Bấm nút bên dưới để tham gia!')
                 .addFields(
-                    { name: 'Kết thúc', value: `<t:${Math.floor(endsAt / 1000)}:R>`, inline: true },
-                    { name: 'Số người thắng', value: `**${winnerCount}** người`, inline: true }
+                    { name: '⏰ Kết thúc', value: `<t:${Math.floor(endsAt / 1000)}:R>`, inline: true },
+                    { name: '🏆 Số người thắng', value: `**${winnerCount}** người`, inline: true },
+                    { name: '👥 Người tham gia', value: '**0** người', inline: true },
+                    { name: '👤 Tổ chức bởi', value: `${interaction.user}` }
                 )
                 .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` })
-                .setTimestamp(endsAt);
+                .setTimestamp();
 
-            if (requirementsText) {
-                giveawayEmbed.addFields({ name: '📜 Yêu cầu', value: requirementsText, inline: false });
-            }
 
             const joinButton = new ButtonBuilder()
                 .setLabel(buttonLabel)
                 .setStyle(ButtonStyle.Success);
-            if (buttonEmoji) joinButton.setEmoji(buttonEmoji);
+            if (buttonEmoji) {
+                try {
+                     joinButton.setEmoji(buttonEmoji);
+                } catch(e) {
+                    console.log("Emoji không hợp lệ, bỏ qua:", buttonEmoji);
+                }
+            }
 
             try {
-                // Tạm thời đặt customId để gửi tin nhắn
                 const tempButton = joinButton.setCustomId(`gw_join_temp_${interaction.id}`);
                 const message = await interaction.channel.send({ embeds: [giveawayEmbed], components: [new ActionRowBuilder().addComponents(tempButton)] });
 
-                // Cập nhật customId của nút với ID tin nhắn thật để định danh chính xác giveaway
                 const finalButton = joinButton.setCustomId(`gw_join_${message.id}`);
+                // SỬA LỖI Ở ĐÂY
                 await message.edit({ components: [new ActionRowBuilder().addComponents(finalButton)] });
+                
+                db.prepare(`INSERT INTO giveaways (messageId, channelId, guildId, prize, winnerCount, endsAt, hostedBy, content_text, required_roles, button_label, button_emoji) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(message.id, interaction.channel.id, interaction.guild.id, prize, winnerCount, endsAt, interaction.user.id, contentText, requiredRoles, buttonLabel, buttonEmoji);
 
-                // Lưu vào database
-                db.prepare(`INSERT INTO giveaways (messageId, channelId, guildId, prize, winnerCount, endsAt, hostedBy, requirements_text, required_roles, button_label, button_emoji) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(message.id, interaction.channel.id, interaction.guild.id, prize, winnerCount, endsAt, interaction.user.id, requirementsText, requiredRoles, buttonLabel, buttonEmoji);
-
-                // Lên lịch kết thúc
                 setTimeout(() => endGiveaway(message.id), durationMs);
 
                 await interaction.followUp({ content: `✅ Đã tạo thành công giveaway tại ${interaction.channel}!` });
@@ -591,18 +608,14 @@ client.on('interactionCreate', async interaction => {
 
                 const originalEmbed = message.embeds[0];
                 const updatedEmbed = EmbedBuilder.from(originalEmbed);
-                const participantsFieldIndex = originalEmbed.fields.findIndex(field => field.name === '👥 Số người tham gia');
-
-                const newField = { name: '👥 Số người tham gia', value: `**${entryCount}** người`, inline: true };
+                const participantsFieldIndex = originalEmbed.fields.findIndex(field => field.name === '👥 Người tham gia');
 
                 if (participantsFieldIndex > -1) {
-                    updatedEmbed.spliceFields(participantsFieldIndex, 1, newField);
-                } else {
-                    updatedEmbed.addFields(newField);
+                    updatedEmbed.spliceFields(participantsFieldIndex, 1, { name: '👥 Người tham gia', value: `**${entryCount}** người`, inline: true });
                 }
+                 // Nếu không tìm thấy field, không làm gì cả vì embed gốc đã có
                 await message.edit({ embeds: [updatedEmbed] });
             } catch (e) {
-                // Bỏ qua lỗi nếu không cập nhật được (ví dụ: tin nhắn đã bị xóa)
                  console.log("Không thể cập nhật số người tham gia giveaway:", e.message);
             }
         }
@@ -1232,18 +1245,19 @@ client.on('interactionCreate', async interaction => {
                 const prizeInput = new TextInputBuilder().setCustomId('gw_prize').setLabel("Giải thưởng là gì?").setStyle(TextInputStyle.Short).setPlaceholder('Ví dụ: Discord Nitro 1 tháng').setRequired(true);
                 const durationInput = new TextInputBuilder().setCustomId('gw_duration').setLabel("Thời gian giveaway?").setStyle(TextInputStyle.Short).setPlaceholder('Ví dụ: 1d, 12h, 30m').setRequired(true);
                 const winnerCountInput = new TextInputBuilder().setCustomId('gw_winner_count').setLabel("Số lượng người thắng?").setStyle(TextInputStyle.Short).setValue('1').setRequired(true);
-                const requirementsInput = new TextInputBuilder().setCustomId('gw_requirements').setLabel("Yêu cầu (hiển thị trên embed)").setStyle(TextInputStyle.Paragraph).setPlaceholder('Ví dụ: Yêu cầu vai trò @Member').setRequired(false);
-                const advancedInput = new TextInputBuilder().setCustomId('gw_advanced').setLabel("Tùy chỉnh Nâng cao (1 dòng/tùy chọn)").setStyle(TextInputStyle.Paragraph).setPlaceholder('role: @RoleID1 @RoleID2\nbutton: 🎁 Bấm vào đây').setRequired(false);
-
+                const contentInput = new TextInputBuilder().setCustomId('gw_content').setLabel("Nội dung").setStyle(TextInputStyle.Paragraph).setPlaceholder('Ghi nội dung hoặc mô tả cho giveaway ở đây.').setRequired(false);
+                const advancedInput = new TextInputBuilder().setCustomId('gw_advanced').setLabel("Tùy chọn Nâng cao (Mỗi dòng một tùy chọn)").setStyle(TextInputStyle.Paragraph).setPlaceholder('roles: @Role1 @Role2\nbutton: 🎉 Tham gia ngay').setRequired(false);
+                
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(prizeInput),
                     new ActionRowBuilder().addComponents(durationInput),
                     new ActionRowBuilder().addComponents(winnerCountInput),
-                    new ActionRowBuilder().addComponents(requirementsInput),
+                    new ActionRowBuilder().addComponents(contentInput),
                     new ActionRowBuilder().addComponents(advancedInput)
                 );
                 
                 await interaction.showModal(modal);
+
             }
             else if (subcommand === 'reroll') {
                 await interaction.deferReply({ ephemeral: true });
@@ -1256,11 +1270,9 @@ client.on('interactionCreate', async interaction => {
 
                 try {
                     const message = await channel.messages.fetch(messageId);
-                    // Lấy ID người thắng cũ từ embed
                     const oldWinnerField = message.embeds[0].fields.find(f => f.name === '🏆 Người thắng cuộc');
                     const oldWinnerIds = oldWinnerField ? oldWinnerField.value.match(/<@(\d+)>/g).map(tag => tag.slice(2, -1)) : [];
                     
-                    // Lấy tất cả người tham gia, trừ người đã thắng
                     const participants = db.prepare('SELECT userId FROM giveaway_entries WHERE giveawayId = ?')
                                         .all(messageId)
                                         .map(row => row.userId)
@@ -1274,8 +1286,8 @@ client.on('interactionCreate', async interaction => {
                     const newWinnerId = participants[newWinnerIndex];
                     const newWinnerTag = `<@${newWinnerId}>`;
 
-                    await interaction.followUp({ content: `Đã chọn lại người thắng! Chúc mừng ${newWinnerTag}!` });
                     await channel.send(`🔄 Người thắng mới cho **${giveaway.prize}** là ${newWinnerTag}! Chúc mừng!`);
+                    await interaction.followUp({ content: `Đã chọn lại người thắng! Chúc mừng ${newWinnerTag}!` });
 
                 } catch (error) {
                     console.error("Lỗi khi reroll giveaway:", error);
@@ -1288,7 +1300,6 @@ client.on('interactionCreate', async interaction => {
                 const giveaway = db.prepare('SELECT * FROM giveaways WHERE messageId = ? AND ended = 0').get(messageId);
                 if (!giveaway) return interaction.followUp({ content: 'Không tìm thấy giveaway đang hoạt động với ID này.' });
                 
-                // Không cần xóa timeout vì chúng ta không dùng client.timeouts
                 await endGiveaway(messageId);
                 await interaction.followUp({ content: '✅ Đã kết thúc giveaway thành công.' });
             }
