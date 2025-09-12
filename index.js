@@ -385,8 +385,8 @@ client.on('interactionCreate', async interaction => {
             if (!durationMs || durationMs <= 0) return interaction.followUp({ content: 'Thời gian không hợp lệ. Vui lòng dùng định dạng như "10m", "1h", "2d".' });
             if (isNaN(winnerCount) || winnerCount < 1) return interaction.followUp({ content: 'Số người thắng phải là một con số lớn hơn 0.' });
 
-            let buttonLabel = 'Tham gia';
-            let buttonEmoji = '🎉';
+            let buttonLabel = '';
+            let buttonEmoji = '<a:hvtm_deskslam:1410282601012269236>';
             let requiredRoles = null;
 
             advancedOptions.split('\n').forEach(line => {
