@@ -188,7 +188,7 @@ const commands = [
             opt.setName('form_name')
             .setDescription('Tên của form bạn muốn điền.')
             .setRequired(true)
-            .setAutocomplete(true) // Sẽ thêm autocomplete sau
+            .setAutocomplete(true)
         ),
     new SlashCommandBuilder().setName('applysetup')
         .setDescription('Quản lý hệ thống đơn đăng ký.')
@@ -403,6 +403,33 @@ client.once('ready', () => {
 // --- TRÌNH LẮNG NGHE TƯƠNG TÁC DUY NHẤT ---
 // ================================================================= //
 client.on('interactionCreate', async interaction => {
+
+    // --- XỬ LÝ TỰ ĐỘNG GỢI Ý (AUTOCOMPLETE) ---
+    if (interaction.isAutocomplete()) {
+        const commandName = interaction.commandName;
+        
+        if (commandName === 'applysetup' || commandName === 'apply') {
+            const focusedOption = interaction.options.getFocused(true);
+            
+            if (focusedOption.name === 'tên_form' || focusedOption.name === 'form_name') {
+                try {
+                    const allForms = db.prepare('SELECT form_name FROM app_forms WHERE guild_id = ?').all(interaction.guild.id);
+                    
+                    const filtered = allForms.filter(form => 
+                        form.form_name.toLowerCase().startsWith(focusedOption.value.toLowerCase())
+                    ).slice(0, 25); // Giới hạn 25 lựa chọn theo Discord API
+                    
+                    await interaction.respond(
+                        filtered.map(choice => ({ name: choice.form_name, value: choice.form_name }))
+                    );
+                } catch (error) {
+                    console.error("Lỗi khi lấy danh sách form cho autocomplete:", error);
+                    await interaction.respond([]);
+                }
+            }
+        }
+        return;
+    }
 
     // --- XỬ LÝ NỘP FORM (MODAL) ---
     if (interaction.isModalSubmit()) {
@@ -692,22 +719,83 @@ client.on('interactionCreate', async interaction => {
 
                 const questions = db.prepare('SELECT * FROM app_questions WHERE form_id = ? ORDER BY question_id ASC').all(formId);
                 if (questions.length === 0) return interaction.reply({ content: 'Lỗi: Form này chưa có câu hỏi nào.', ephemeral: true });
-                
-                const modal = new ModalBuilder()
-                    .setCustomId(`apply_submit_${formId}`)
-                    .setTitle(form.form_name);
 
+                try {
+                    // Bước 1: Gửi tin nhắn DM đầu tiên để kiểm tra xem người dùng có mở DM không
+                    const dmChannel = await interaction.user.createDM();
+                    await dmChannel.send(`Chào bạn, chúng ta sẽ bắt đầu quy trình đăng ký cho form **${form.form_name}** tại server **${interaction.guild.name}**.\nBạn có **5 phút** để trả lời mỗi câu hỏi. Nếu không trả lời, đơn sẽ tự động bị hủy.`);
+                    
+                    // Phản hồi tạm thời trong kênh server để người dùng biết
+                    await interaction.reply({ content: '✅ Đã bắt đầu quy trình đăng ký trong tin nhắn riêng của bạn! Vui lòng kiểm tra DM.', ephemeral: true });
+
+                } catch (error) {
+                    console.error("Lỗi khi gửi DM:", error);
+                    return interaction.reply({ content: '❌ Tôi không thể gửi tin nhắn cho bạn! Vui lòng bật "Tin nhắn trực tiếp" trong cài đặt quyền riêng tư của server này và thử lại.', ephemeral: true });
+                }
+                
+                // Bước 2: Bắt đầu hỏi từng câu một trong DM
+                const collectedAnswers = [];
+                const dmChannel = await interaction.user.dmChannel;
+
+                for (const question of questions) {
+                    await dmChannel.send(`**Câu hỏi ${questions.indexOf(question) + 1}/${questions.length}:**\n${question.question_text}`);
+                    
+                    const filter = m => m.author.id === interaction.user.id;
+                    try {
+                        const collected = await dmChannel.awaitMessages({ filter, max: 1, time: 300000, errors: ['time'] }); // 300000ms = 5 phút
+                        const answer = collected.first().content;
+                        collectedAnswers.push({
+                            question_id: question.question_id,
+                            answer_text: answer
+                        });
+                    } catch (e) {
+                        return dmChannel.send('Bạn đã không trả lời kịp. Đơn đăng ký đã bị hủy.');
+                    }
+                }
+                
+                await dmChannel.send('Cảm ơn bạn đã hoàn thành! Đơn của bạn đang được xử lý và gửi đi...');
+
+                // Bước 3: Xử lý và gửi đơn đăng ký đi
+                const transaction = db.transaction(() => {
+                    const submissionInsert = db.prepare('INSERT INTO app_submissions (form_id, user_id, submitted_at) VALUES (?, ?, ?)')
+                                              .run(formId, interaction.user.id, Date.now());
+                    const submissionId = submissionInsert.lastInsertRowid;
+
+                    const answerInsert = db.prepare('INSERT INTO app_answers (submission_id, question_id, answer_text) VALUES (?, ?, ?)');
+                    
+                    collectedAnswers.forEach(ans => {
+                        answerInsert.run(submissionId, ans.question_id, ans.answer_text);
+                    });
+                    
+                    return submissionId;
+                });
+                
+                const submissionId = transaction();
+
+                const receivingChannel = await client.channels.fetch(form.receiving_channel_id).catch(() => null);
+                if (!receivingChannel) return console.error(`Không tìm thấy kênh nhận đơn ID: ${form.receiving_channel_id}`);
+
+                const reviewEmbed = new EmbedBuilder()
+                    .setColor('Yellow')
+                    .setTitle(`📝 Đơn đăng ký mới (qua DM): ${form.form_name}`)
+                    .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+                    .addFields(
+                        { name: '👤 Người nộp đơn', value: `${interaction.user}`, inline: true },
+                        { name: '🆔 User ID', value: `\`${interaction.user.id}\``, inline: true }
+                    )
+                    .setTimestamp();
+                
                 questions.forEach(q => {
-                    const textInput = new TextInputBuilder()
-                        .setCustomId(`q_${q.question_id}`)
-                        .setLabel(q.question_text)
-                        .setStyle(q.question_style === 'Paragraph' ? TextInputStyle.Paragraph : TextInputStyle.Short)
-                        .setRequired(q.is_required === 1);
-                    if (q.placeholder) textInput.setPlaceholder(q.placeholder);
-                    modal.addComponents(new ActionRowBuilder().addComponents(textInput));
+                    const answer = collectedAnswers.find(a => a.question_id === q.question_id);
+                    reviewEmbed.addFields({ name: q.question_text, value: `\`\`\`${answer ? answer.answer_text : 'Không trả lời'}\`\`\`` });
                 });
 
-                await interaction.showModal(modal);
+                const approveButton = new ButtonBuilder().setCustomId(`apply_approve_${submissionId}`).setLabel('Chấp thuận').setStyle(ButtonStyle.Success).setEmoji('✅');
+                const rejectButton = new ButtonBuilder().setCustomId(`apply_reject_${submissionId}`).setLabel('Từ chối').setStyle(ButtonStyle.Danger).setEmoji('❌');
+                const row = new ActionRowBuilder().addComponents(approveButton, rejectButton);
+
+                await receivingChannel.send({ embeds: [reviewEmbed], components: [row] });
+
             }
             else if (action === 'approve' || action === 'reject') {
                 if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
