@@ -11,7 +11,7 @@ app.listen(port, () => {
 });
 
 // --- THƯ VIỆN ---
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder, ComponentType } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder, ComponentType, Collection } = require('discord.js');
 const ms = require('ms');
 require('dotenv').config();
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
@@ -739,7 +739,7 @@ client.on('interactionCreate', async interaction => {
 
                 try {
                     const dmChannel = await interaction.user.createDM();
-                    await dmChannel.send(`Chào bạn, chúng ta sẽ bắt đầu quy trình đăng ký cho form **${form.form_name}** tại server **${interaction.guild.name}**.\nBạn có **5 phút** để trả lời mỗi câu hỏi. Nếu không trả lời, đơn sẽ tự động bị hủy.`);
+                    await dmChannel.send(`Chào bạn, chúng ta sẽ bắt đầu quy trình đăng ký cho form **${form.form_name}** tại server **${interaction.guild.name}**.\nBạn có thể trả lời các câu hỏi bất cứ lúc nào.\nNếu muốn dừng lại, hãy bấm nút "Hủy".`);
                     await interaction.reply({ content: '✅ Đã bắt đầu quy trình đăng ký trong tin nhắn riêng của bạn! Vui lòng kiểm tra DM.', ephemeral: true });
                 } catch (error) {
                     console.error("Lỗi khi gửi DM:", error);
@@ -748,73 +748,96 @@ client.on('interactionCreate', async interaction => {
                 
                 const collectedAnswers = [];
                 const dmChannel = await interaction.user.dmChannel;
+                const cancelButton = new ButtonBuilder().setCustomId('apply_cancel').setLabel('Hủy').setStyle(ButtonStyle.Secondary);
 
                 for (const question of questions) {
                     const questionPrompt = `**Câu hỏi ${questions.indexOf(question) + 1}/${questions.length}:**\n${question.question_text}`;
                     let answer = null;
-                    let validAnswer = false;
+                    
+                    try {
+                        let response;
+                        const messageFilter = m => m.author.id === interaction.user.id;
+                        const buttonFilter = i => i.user.id === interaction.user.id && i.customId === 'apply_cancel';
 
-                    while (!validAnswer) {
-                        try {
-                            switch (question.question_style) {
-                                case 'YesNo': {
-                                    const yesButton = new ButtonBuilder().setCustomId('yes').setLabel('Có').setStyle(ButtonStyle.Success);
-                                    const noButton = new ButtonBuilder().setCustomId('no').setLabel('Không').setStyle(ButtonStyle.Danger);
-                                    const row = new ActionRowBuilder().addComponents(yesButton, noButton);
-                                    const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
-                                    const buttonInteraction = await msg.awaitMessageComponent({ componentType: ComponentType.Button, time: 300000 });
-                                    answer = buttonInteraction.customId === 'yes' ? 'Có' : 'Không';
-                                    await buttonInteraction.update({ content: `*Bạn đã chọn: ${answer}*`, components: [] });
-                                    validAnswer = true;
-                                    break;
-                                }
-                                case 'MultipleChoice': {
-                                    const options = question.question_options.split(',').map(opt => ({ label: opt.trim(), value: opt.trim() }));
-                                    if (options.length === 0) {
-                                        answer = "Lỗi: Câu hỏi không có lựa chọn.";
-                                        validAnswer = true;
-                                        break;
-                                    }
-                                    const selectMenu = new StringSelectMenuBuilder().setCustomId('mc_select').setPlaceholder('Chọn một câu trả lời...').addOptions(options);
-                                    const row = new ActionRowBuilder().addComponents(selectMenu);
-                                    const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
-                                    const selectInteraction = await msg.awaitMessageComponent({ componentType: ComponentType.StringSelect, time: 300000 });
-                                    answer = selectInteraction.values[0];
-                                    await selectInteraction.update({ content: `*Bạn đã chọn: ${answer}*`, components: [] });
-                                    validAnswer = true;
-                                    break;
-                                }
-                                case 'Number': {
-                                    await dmChannel.send({ content: questionPrompt });
-                                    const filter = m => m.author.id === interaction.user.id && !isNaN(parseInt(m.content));
-                                    const collected = await dmChannel.awaitMessages({ filter, max: 1, time: 300000, errors: ['time'] });
-                                    answer = collected.first().content;
-                                    validAnswer = true;
-                                    break;
-                                }
-                                case 'Short':
-                                case 'Paragraph':
-                                default: {
-                                    await dmChannel.send({ content: questionPrompt });
-                                    const filter = m => m.author.id === interaction.user.id;
-                                    const collected = await dmChannel.awaitMessages({ filter, max: 1, time: 300000, errors: ['time'] });
-                                    answer = collected.first().content;
-                                    validAnswer = true;
-                                    break;
-                                }
+                        switch (question.question_style) {
+                            case 'YesNo': {
+                                const yesButton = new ButtonBuilder().setCustomId('yes').setLabel('Có').setStyle(ButtonStyle.Success);
+                                const noButton = new ButtonBuilder().setCustomId('no').setLabel('Không').setStyle(ButtonStyle.Danger);
+                                const row = new ActionRowBuilder().addComponents(yesButton, noButton, cancelButton);
+                                const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
+                                
+                                const buttonInteraction = await msg.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id });
+                                if (buttonInteraction.customId === 'apply_cancel') throw new Error('cancelled');
+
+                                answer = buttonInteraction.customId === 'yes' ? 'Có' : 'Không';
+                                await buttonInteraction.update({ content: `*Bạn đã chọn: ${answer}*`, components: [] });
+                                break;
                             }
-                        } catch (e) {
-                             if(e.message?.includes('reason: time')) {
-                                await dmChannel.send('Bạn đã không trả lời kịp. Đơn đăng ký đã bị hủy.');
-                                return;
-                            } else if (e.message?.includes('NaN')) {
-                                await dmChannel.send('⚠️ Vui lòng chỉ nhập số. Hãy thử lại.');
-                            } else {
-                                console.error("Lỗi không xác định trong vòng lặp câu hỏi:", e);
-                                await dmChannel.send('Đã có lỗi xảy ra. Đơn đăng ký đã bị hủy.');
-                                return;
+                            case 'MultipleChoice': {
+                                const options = question.question_options.split(',').map(opt => ({ label: opt.trim(), value: opt.trim() }));
+                                if (options.length === 0) {
+                                    answer = "Lỗi: Câu hỏi không có lựa chọn.";
+                                    break;
+                                }
+                                const selectMenu = new StringSelectMenuBuilder().setCustomId('mc_select').setPlaceholder('Chọn một câu trả lời...').addOptions(options);
+                                const menuRow = new ActionRowBuilder().addComponents(selectMenu);
+                                const buttonRow = new ActionRowBuilder().addComponents(cancelButton);
+                                const msg = await dmChannel.send({ content: questionPrompt, components: [menuRow, buttonRow] });
+
+                                const componentInteraction = await msg.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id });
+                                if (componentInteraction.isButton() && componentInteraction.customId === 'apply_cancel') throw new Error('cancelled');
+                                
+                                answer = componentInteraction.values[0];
+                                await componentInteraction.update({ content: `*Bạn đã chọn: ${answer}*`, components: [] });
+                                break;
+                            }
+                            case 'Number': {
+                                let isValidNumber = false;
+                                while (!isValidNumber) {
+                                    const row = new ActionRowBuilder().addComponents(cancelButton);
+                                    const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
+
+                                    const messageCollector = dmChannel.awaitMessages({ filter: messageFilter, max: 1 });
+                                    const buttonCollector = msg.awaitMessageComponent({ filter: buttonFilter });
+                                    
+                                    response = await Promise.race([messageCollector, buttonCollector]);
+
+                                    if (response.customId === 'apply_cancel') throw new Error('cancelled');
+                                    
+                                    const collectedMsg = response.first();
+                                    if (!isNaN(parseInt(collectedMsg.content))) {
+                                        answer = collectedMsg.content;
+                                        isValidNumber = true;
+                                    } else {
+                                        await dmChannel.send('⚠️ Vui lòng chỉ nhập số. Hãy thử lại.');
+                                    }
+                                }
+                                break;
+                            }
+                            default: { // Short & Paragraph
+                                const row = new ActionRowBuilder().addComponents(cancelButton);
+                                const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
+                                
+                                const messageCollector = dmChannel.awaitMessages({ filter: messageFilter, max: 1 });
+                                const buttonCollector = msg.awaitMessageComponent({ filter: buttonFilter });
+
+                                response = await Promise.race([messageCollector, buttonCollector]);
+                                
+                                if (response.customId === 'apply_cancel') throw new Error('cancelled');
+
+                                answer = response.first().content;
+                                break;
                             }
                         }
+                    } catch (e) {
+                         if (e.message === 'cancelled') {
+                            await e.interaction?.update({ content: '✅ Đơn đăng ký đã được bạn hủy.', components: [] }).catch(() => {});
+                            await dmChannel.send('✅ Đơn đăng ký đã được hủy.');
+                            return;
+                         }
+                         console.error("Lỗi trong vòng lặp câu hỏi:", e);
+                         await dmChannel.send('Đã có lỗi xảy ra. Đơn đăng ký đã bị hủy.');
+                         return;
                     }
                      collectedAnswers.push({ question_id: question.question_id, answer_text: answer });
                 }
