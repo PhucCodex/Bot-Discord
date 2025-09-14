@@ -239,7 +239,8 @@ const commands = [
                 { name: '📄 Trả lời dài (đoạn văn)', value: 'Paragraph'},
                 { name: '✅/❌ Trả lời Có/Không', value: 'YesNo' },
                 { name: '🔢 Trả lời bằng Số', value: 'Number' },
-                { name: '👇 Trả lời Trắc nghiệm (chọn 1)', value: 'MultipleChoice' }
+                { name: '👇 Trả lời Trắc nghiệm (chọn 1)', value: 'MultipleChoice' },
+                { name: '🖼️ Tải lên Hình ảnh', value: 'Image' }
             ))
             .addStringOption(opt => opt.setName('lựa_chọn').setDescription('Các lựa chọn cho câu hỏi trắc nghiệm, cách nhau bởi dấu phẩy (,).'))
             .addStringOption(opt => opt.setName('chữ_mờ').setDescription('Văn bản gợi ý (placeholder) cho ô nhập liệu.'))
