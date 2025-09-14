@@ -11,7 +11,7 @@ app.listen(port, () => {
 });
 
 // --- THƯ VIỆN ---
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, ModalBuilder, TextInputBuilder, ActionRowBuilder, TextInputStyle, EmbedBuilder, ChannelType, PermissionFlagsBits, ButtonBuilder, ButtonStyle, ActivityType, StringSelectMenuBuilder, ComponentType } = require('discord.js');
 const ms = require('ms');
 require('dotenv').config();
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
@@ -90,6 +90,7 @@ function setupDatabase() {
         question_style TEXT NOT NULL DEFAULT 'Short',
         placeholder TEXT,
         is_required INTEGER NOT NULL DEFAULT 1,
+        question_options TEXT, -- THÊM CỘT MỚI
         FOREIGN KEY (form_id) REFERENCES app_forms (form_id) ON DELETE CASCADE
     )`);
 
@@ -112,7 +113,16 @@ function setupDatabase() {
         FOREIGN KEY (submission_id) REFERENCES app_submissions (submission_id) ON DELETE CASCADE,
         FOREIGN KEY (question_id) REFERENCES app_questions (question_id) ON DELETE CASCADE
     )`);
-    // --- Kết thúc phần Application ---
+    
+    // Nâng cấp bảng app_questions, bỏ qua lỗi nếu cột đã tồn tại
+    try {
+        db.exec('ALTER TABLE app_questions ADD COLUMN question_options TEXT');
+        console.log('Nâng cấp bảng app_questions thành công.');
+    } catch (error) {
+        if (!error.message.includes('duplicate column name')) {
+            console.error('Lỗi khi nâng cấp bảng app_questions:', error);
+        }
+    }
 
     db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`).run('ticketCounter', '1');
     console.log('✅ Database đã được thiết lập và sẵn sàng (với hệ thống Giveaway và Application nâng cấp).');
@@ -205,7 +215,14 @@ const commands = [
             .setDescription('Thêm một câu hỏi vào form đã tạo.')
             .addStringOption(opt => opt.setName('tên_form').setDescription('Tên của form bạn muốn thêm câu hỏi.').setRequired(true).setAutocomplete(true))
             .addStringOption(opt => opt.setName('câu_hỏi').setDescription('Nội dung câu hỏi.').setRequired(true))
-            .addStringOption(opt => opt.setName('loại').setDescription('Loại câu trả lời.').setRequired(true).addChoices({ name: 'Trả lời ngắn', value: 'Short'}, { name: 'Trả lời dài (đoạn văn)', value: 'Paragraph'}))
+            .addStringOption(opt => opt.setName('loại').setDescription('Loại câu trả lời.').setRequired(true).addChoices(
+                { name: '💬 Trả lời ngắn', value: 'Short'}, 
+                { name: '📄 Trả lời dài (đoạn văn)', value: 'Paragraph'},
+                { name: '✅/❌ Trả lời Có/Không', value: 'YesNo' },
+                { name: '🔢 Trả lời bằng Số', value: 'Number' },
+                { name: '👇 Trả lời Trắc nghiệm (chọn 1)', value: 'MultipleChoice' }
+            ))
+            .addStringOption(opt => opt.setName('lựa_chọn').setDescription('Các lựa chọn cho câu hỏi trắc nghiệm, cách nhau bởi dấu phẩy (,).'))
             .addStringOption(opt => opt.setName('chữ_mờ').setDescription('Văn bản gợi ý (placeholder) cho ô nhập liệu.'))
         )
         .addSubcommand(sub => 
@@ -698,7 +715,7 @@ client.on('interactionCreate', async interaction => {
             
             modal.addComponents(
                 new ActionRowBuilder().addComponents(prizeInput),
-                new ActionRowBuilder().addComponents(durationInput),
+                new ActionRowRowBuilder().addComponents(durationInput),
                 new ActionRowBuilder().addComponents(winnerCountInput),
                 new ActionRowBuilder().addComponents(contentInput),
                 new ActionRowBuilder().addComponents(advancedInput)
@@ -721,41 +738,89 @@ client.on('interactionCreate', async interaction => {
                 if (questions.length === 0) return interaction.reply({ content: 'Lỗi: Form này chưa có câu hỏi nào.', ephemeral: true });
 
                 try {
-                    // Bước 1: Gửi tin nhắn DM đầu tiên để kiểm tra xem người dùng có mở DM không
                     const dmChannel = await interaction.user.createDM();
                     await dmChannel.send(`Chào bạn, chúng ta sẽ bắt đầu quy trình đăng ký cho form **${form.form_name}** tại server **${interaction.guild.name}**.\nBạn có **5 phút** để trả lời mỗi câu hỏi. Nếu không trả lời, đơn sẽ tự động bị hủy.`);
-                    
-                    // Phản hồi tạm thời trong kênh server để người dùng biết
                     await interaction.reply({ content: '✅ Đã bắt đầu quy trình đăng ký trong tin nhắn riêng của bạn! Vui lòng kiểm tra DM.', ephemeral: true });
-
                 } catch (error) {
                     console.error("Lỗi khi gửi DM:", error);
                     return interaction.reply({ content: '❌ Tôi không thể gửi tin nhắn cho bạn! Vui lòng bật "Tin nhắn trực tiếp" trong cài đặt quyền riêng tư của server này và thử lại.', ephemeral: true });
                 }
                 
-                // Bước 2: Bắt đầu hỏi từng câu một trong DM
                 const collectedAnswers = [];
                 const dmChannel = await interaction.user.dmChannel;
 
                 for (const question of questions) {
-                    await dmChannel.send(`**Câu hỏi ${questions.indexOf(question) + 1}/${questions.length}:**\n${question.question_text}`);
-                    
-                    const filter = m => m.author.id === interaction.user.id;
-                    try {
-                        const collected = await dmChannel.awaitMessages({ filter, max: 1, time: 300000, errors: ['time'] }); // 300000ms = 5 phút
-                        const answer = collected.first().content;
-                        collectedAnswers.push({
-                            question_id: question.question_id,
-                            answer_text: answer
-                        });
-                    } catch (e) {
-                        return dmChannel.send('Bạn đã không trả lời kịp. Đơn đăng ký đã bị hủy.');
+                    const questionPrompt = `**Câu hỏi ${questions.indexOf(question) + 1}/${questions.length}:**\n${question.question_text}`;
+                    let answer = null;
+                    let validAnswer = false;
+
+                    while (!validAnswer) {
+                        try {
+                            switch (question.question_style) {
+                                case 'YesNo': {
+                                    const yesButton = new ButtonBuilder().setCustomId('yes').setLabel('Có').setStyle(ButtonStyle.Success);
+                                    const noButton = new ButtonBuilder().setCustomId('no').setLabel('Không').setStyle(ButtonStyle.Danger);
+                                    const row = new ActionRowBuilder().addComponents(yesButton, noButton);
+                                    const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
+                                    const buttonInteraction = await msg.awaitMessageComponent({ componentType: ComponentType.Button, time: 300000 });
+                                    answer = buttonInteraction.customId === 'yes' ? 'Có' : 'Không';
+                                    await buttonInteraction.update({ content: `*Bạn đã chọn: ${answer}*`, components: [] });
+                                    validAnswer = true;
+                                    break;
+                                }
+                                case 'MultipleChoice': {
+                                    const options = question.question_options.split(',').map(opt => ({ label: opt.trim(), value: opt.trim() }));
+                                    if (options.length === 0) {
+                                        answer = "Lỗi: Câu hỏi không có lựa chọn.";
+                                        validAnswer = true;
+                                        break;
+                                    }
+                                    const selectMenu = new StringSelectMenuBuilder().setCustomId('mc_select').setPlaceholder('Chọn một câu trả lời...').addOptions(options);
+                                    const row = new ActionRowBuilder().addComponents(selectMenu);
+                                    const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
+                                    const selectInteraction = await msg.awaitMessageComponent({ componentType: ComponentType.StringSelect, time: 300000 });
+                                    answer = selectInteraction.values[0];
+                                    await selectInteraction.update({ content: `*Bạn đã chọn: ${answer}*`, components: [] });
+                                    validAnswer = true;
+                                    break;
+                                }
+                                case 'Number': {
+                                    await dmChannel.send({ content: questionPrompt });
+                                    const filter = m => m.author.id === interaction.user.id && !isNaN(parseInt(m.content));
+                                    const collected = await dmChannel.awaitMessages({ filter, max: 1, time: 300000, errors: ['time'] });
+                                    answer = collected.first().content;
+                                    validAnswer = true;
+                                    break;
+                                }
+                                case 'Short':
+                                case 'Paragraph':
+                                default: {
+                                    await dmChannel.send({ content: questionPrompt });
+                                    const filter = m => m.author.id === interaction.user.id;
+                                    const collected = await dmChannel.awaitMessages({ filter, max: 1, time: 300000, errors: ['time'] });
+                                    answer = collected.first().content;
+                                    validAnswer = true;
+                                    break;
+                                }
+                            }
+                        } catch (e) {
+                             if(e.message?.includes('reason: time')) {
+                                await dmChannel.send('Bạn đã không trả lời kịp. Đơn đăng ký đã bị hủy.');
+                                return;
+                            } else if (e.message?.includes('NaN')) {
+                                await dmChannel.send('⚠️ Vui lòng chỉ nhập số. Hãy thử lại.');
+                            } else {
+                                console.error("Lỗi không xác định trong vòng lặp câu hỏi:", e);
+                                await dmChannel.send('Đã có lỗi xảy ra. Đơn đăng ký đã bị hủy.');
+                                return;
+                            }
+                        }
                     }
+                     collectedAnswers.push({ question_id: question.question_id, answer_text: answer });
                 }
                 
                 await dmChannel.send('Cảm ơn bạn đã hoàn thành! Đơn của bạn đang được xử lý và gửi đi...');
 
-                // Bước 3: Xử lý và gửi đơn đăng ký đi
                 const transaction = db.transaction(() => {
                     const submissionInsert = db.prepare('INSERT INTO app_submissions (form_id, user_id, submitted_at) VALUES (?, ?, ?)')
                                               .run(formId, interaction.user.id, Date.now());
@@ -1542,17 +1607,17 @@ client.on('interactionCreate', async interaction => {
                     return interaction.editReply({ content: `❌ Không tìm thấy form nào có tên \`${formName}\`.` });
                 }
 
-                const questions = db.prepare('SELECT * FROM app_questions WHERE form_id = ?').all(form.form_id);
-                if (questions.length >= 5) {
-                    return interaction.editReply({ content: '❌ Một form chỉ có thể có tối đa 5 câu hỏi (giới hạn của Discord Modal).' });
-                }
-
                 const questionText = interaction.options.getString('câu_hỏi');
                 const questionStyle = interaction.options.getString('loại');
                 const placeholder = interaction.options.getString('chữ_mờ');
+                const questionOptions = interaction.options.getString('lựa_chọn');
 
-                db.prepare('INSERT INTO app_questions (form_id, question_text, question_style, placeholder) VALUES (?, ?, ?, ?)')
-                  .run(form.form_id, questionText, questionStyle, placeholder);
+                if (questionStyle === 'MultipleChoice' && !questionOptions) {
+                    return interaction.editReply({ content: '❌ Với loại câu hỏi trắc nghiệm, bạn phải cung cấp các lựa chọn trong ô `lựa_chọn`.' });
+                }
+
+                db.prepare('INSERT INTO app_questions (form_id, question_text, question_style, placeholder, question_options) VALUES (?, ?, ?, ?, ?)')
+                  .run(form.form_id, questionText, questionStyle, placeholder, questionOptions);
 
                 return interaction.editReply({ content: `✅ Đã thêm câu hỏi vào form \`${formName}\` thành công!` });
 
