@@ -17,10 +17,10 @@ require('dotenv').config();
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
 const play = require('play-dl');
 const Database = require('better-sqlite3');
-const fs = require('fs');
+const fs = require('fs'); // Thêm module fs
 
 // --- KHỞI TẠO DATABASE ---
-fs.mkdirSync('./data', { recursive: true });
+fs.mkdirSync('./data', { recursive: true }); // Tạo thư mục data nếu chưa có
 const db = new Database('./data/data.db');
 
 // --- BIẾN TOÀN CỤC ---
@@ -235,6 +235,12 @@ const commands = [
             .addStringOption(opt => opt.setName('mô_tả').setDescription('Nội dung mô tả. Dùng \\n để xuống dòng.').setRequired(true))
             .addStringOption(opt => opt.setName('chữ_nút').setDescription('Chữ hiển thị trên nút bấm (mặc định: Đăng ký).'))
             .addStringOption(opt => opt.setName('màu').setDescription('Mã màu Hex cho embed (ví dụ: #5865F2).'))
+            .addStringOption(opt => opt.setName('màu_nút').setDescription('Chọn màu cho nút bấm.').setRequired(false).addChoices(
+                { name: 'Tím/Xanh (Primary)', value: 'Primary' },
+                { name: 'Xám (Secondary)', value: 'Secondary' },
+                { name: 'Xanh Lá (Success)', value: 'Success' },
+                { name: 'Đỏ (Danger)', value: 'Danger' }
+            ))
         ),
     // --- LỆNH HELP ---
     new SlashCommandBuilder().setName('help').setDescription('Hiển thị danh sách các lệnh hoặc thông tin chi tiết về một lệnh cụ thể.').addStringOption(opt => opt.setName('lệnh').setDescription('Tên lệnh bạn muốn xem chi tiết.').setRequired(false)),
@@ -770,7 +776,7 @@ client.on('interactionCreate', async interaction => {
                     
                     try {
                         const messageFilter = m => m.author.id === interaction.user.id;
-                        const buttonFilter = i => i.user.id === interaction.user.id;
+                        const componentFilter = i => i.user.id === interaction.user.id;
 
                         switch (question.question_style) {
                             case 'YesNo': {
@@ -779,7 +785,7 @@ client.on('interactionCreate', async interaction => {
                                 const row = new ActionRowBuilder().addComponents(yesButton, noButton, cancelButton);
                                 const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
                                 
-                                const buttonInteraction = await msg.awaitMessageComponent({ filter: buttonFilter });
+                                const buttonInteraction = await msg.awaitMessageComponent({ filter: componentFilter });
                                 if (buttonInteraction.customId === 'apply_cancel') throw new CancelError(buttonInteraction);
 
                                 answer = buttonInteraction.customId === 'yes' ? 'Có' : 'Không';
@@ -797,7 +803,7 @@ client.on('interactionCreate', async interaction => {
                                 const buttonRow = new ActionRowBuilder().addComponents(cancelButton);
                                 const msg = await dmChannel.send({ content: questionPrompt, components: [menuRow, buttonRow] });
 
-                                const componentInteraction = await msg.awaitMessageComponent({ filter: buttonFilter });
+                                const componentInteraction = await msg.awaitMessageComponent({ filter: componentFilter });
                                 if (componentInteraction.isButton() && componentInteraction.customId === 'apply_cancel') throw new CancelError(componentInteraction);
                                 
                                 answer = componentInteraction.values[0];
@@ -811,7 +817,7 @@ client.on('interactionCreate', async interaction => {
                                     const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
 
                                     const messageCollector = dmChannel.awaitMessages({ filter: messageFilter, max: 1 });
-                                    const buttonCollector = msg.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id && i.customId === 'apply_cancel'});
+                                    const buttonCollector = msg.awaitMessageComponent({ filter: i => i.customId === 'apply_cancel' && i.user.id === interaction.user.id });
                                     
                                     const response = await Promise.race([messageCollector, buttonCollector]);
                                     
@@ -832,7 +838,7 @@ client.on('interactionCreate', async interaction => {
                                 const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
                                 
                                 const messageCollector = dmChannel.awaitMessages({ filter: messageFilter, max: 1 });
-                                const buttonCollector = msg.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id && i.customId === 'apply_cancel'});
+                                const buttonCollector = msg.awaitMessageComponent({ filter: i => i.customId === 'apply_cancel' && i.user.id === interaction.user.id });
 
                                 const response = await Promise.race([messageCollector, buttonCollector]);
                                 
@@ -1670,6 +1676,15 @@ client.on('interactionCreate', async interaction => {
                 const description = interaction.options.getString('mô_tả').replace(/\\n/g, '\n');
                 const buttonLabel = interaction.options.getString('chữ_nút') || 'Đăng ký';
                 const color = interaction.options.getString('màu') || '#5865F2';
+                const buttonColor = interaction.options.getString('màu_nút') || 'Primary';
+
+                let buttonStyle;
+                switch(buttonColor) {
+                    case 'Success': buttonStyle = ButtonStyle.Success; break;
+                    case 'Danger': buttonStyle = ButtonStyle.Danger; break;
+                    case 'Secondary': buttonStyle = ButtonStyle.Secondary; break;
+                    default: buttonStyle = ButtonStyle.Primary;
+                }
 
                 const panelEmbed = new EmbedBuilder()
                     .setTitle(title)
@@ -1679,7 +1694,7 @@ client.on('interactionCreate', async interaction => {
                 const applyButton = new ButtonBuilder()
                     .setCustomId(`apply_start_${form.form_id}`)
                     .setLabel(buttonLabel)
-                    .setStyle(ButtonStyle.Primary)
+                    .setStyle(buttonStyle)
                     .setEmoji('📝');
                     
                 const row = new ActionRowBuilder().addComponents(applyButton);
