@@ -34,7 +34,7 @@ const DEFAULT_FEEDBACK_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_ROLE_ID = '1412090993909563534';
 const WELCOME_CHANNEL_ID = '1413874004690997378';
 const GOODBYE_CHANNEL_ID = '1413893224266993818';
-const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d55433d833ac1e6a713fd.gif';
+const GOODBYE_GIF_URL = 'https://i.pinimg.com/originals/ec/c6/8e/ecc68e64677d_55433d833ac1e6a713fd.gif';
 const CHAT_CHANNEL_ID = '1413876927936331878';
 const SUPPORT_CHANNEL_ID = '1413878121995960361';
 const SUPPORT_TICKET_CATEGORY_ID = '1413009121606631456';
@@ -159,7 +159,24 @@ const commands = [
     new SlashCommandBuilder().setName('roletemp').setDescription('Gán một vai trò tạm thời cho thành viên.').addUserOption(opt => opt.setName('người').setDescription('Thành viên bạn muốn gán vai trò.').setRequired(true)).addRoleOption(opt => opt.setName('vai_trò').setDescription('Vai trò bạn muốn gán.').setRequired(true)).addStringOption(opt => opt.setName('thời_hạn').setDescription('Thời hạn (ví dụ: 10m, 1h, 7d).').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
     new SlashCommandBuilder().setName('unroletemp').setDescription('Gỡ một vai trò tạm thời khỏi thành viên ngay lập tức.').addUserOption(opt => opt.setName('người').setDescription('Thành viên bạn muốn gỡ vai trò.').setRequired(true)).addRoleOption(opt => opt.setName('vai_trò').setDescription('Vai trò bạn muốn gỡ.').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
     new SlashCommandBuilder().setName('ticketsetup').setDescription('Cài đặt bảng điều khiển ticket có tùy chỉnh.').addStringOption(opt => opt.setName('tieu_de').setDescription('Tiêu đề chính của bảng điều khiển.').setRequired(true)).addStringOption(opt => opt.setName('mo_ta').setDescription('Nội dung mô tả chi tiết. Dùng \\n để xuống dòng.').setRequired(true)).addStringOption(opt => opt.setName('content').setDescription('Nội dung tin nhắn riêng bên trên embed (để ping role, thêm emoji...).')).addStringOption(opt => opt.setName('hinh_anh').setDescription('URL hình ảnh (ảnh bìa) của bảng điều khiển.')).addStringOption(opt => opt.setName('anh_banner').setDescription('URL của hình ảnh lớn hiển thị phía trên embed.')).addStringOption(opt => opt.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).')).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    new SlashCommandBuilder().setName('formsetup').setDescription('Cài đặt bảng điều khiển để mở form feedback.').addStringOption(opt => opt.setName('tieu_de').setDescription('Tiêu đề chính của bảng điều khiển.').setRequired(true)).addStringOption(opt => opt.setName('mo_ta').setDescription('Nội dung mô tả chi tiết. Dùng \\n để xuống dòng.').setRequired(true)).addStringOption(opt => opt.setName('content').setDescription('Nội dung tin nhắn riêng bên trên embed (để ping role, thêm emoji...).')).addChannelOption(opt => opt.setName('kenh_nhan_form').setDescription('Kênh sẽ nhận kết quả form. Mặc định là kênh feedback chung.')).addStringOption(opt => opt.setName('hinh_anh').setDescription('URL hình ảnh (ảnh bìa) của bảng điều khiển.')).addStringOption(opt => opt.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).')).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    
+    new SlashCommandBuilder().setName('formsetup')
+        .setDescription('Cài đặt bảng điều khiển để mở form feedback.')
+        .addStringOption(opt => opt.setName('tieu_de').setDescription('Tiêu đề chính của bảng điều khiển.').setRequired(true))
+        .addStringOption(opt => opt.setName('mo_ta').setDescription('Nội dung mô tả chi tiết. Dùng \\n để xuống dòng.').setRequired(true))
+        .addStringOption(opt => opt.setName('content').setDescription('Nội dung tin nhắn riêng bên trên embed (để ping role, thêm emoji...).'))
+        .addChannelOption(opt => opt.setName('kenh_nhan_form').setDescription('Kênh sẽ nhận kết quả form. Mặc định là kênh feedback chung.'))
+        .addStringOption(opt => opt.setName('hinh_anh').setDescription('URL hình ảnh (ảnh bìa) của bảng điều khiển.'))
+        .addStringOption(opt => opt.setName('mau_sac').setDescription('Mã màu Hex cho đường viền (ví dụ: #FF5733).'))
+        .addStringOption(opt => opt.setName('màu_nút').setDescription('Chọn màu cho nút bấm.').setRequired(false).addChoices(
+            { name: 'Tím/Xanh (Primary)', value: 'Primary' },
+            { name: 'Xám (Secondary)', value: 'Secondary' },
+            { name: 'Xanh Lá (Success)', value: 'Success' },
+            { name: 'Đỏ (Danger)', value: 'Danger' }
+        ))
+        .addStringOption(opt => opt.setName('emoji_nút').setDescription('Emoji hiển thị trên nút bấm (Tùy chọn).'))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
     new SlashCommandBuilder().setName('warn').setDescription('Gửi cảnh cáo đến một thành viên.').addUserOption(opt => opt.setName('người').setDescription('Thành viên cần cảnh cáo').setRequired(true)).addStringOption(opt => opt.setName('lý_do').setDescription('Lý do cảnh cáo').setRequired(true)).addStringOption(opt => opt.setName('nơi_gửi').setDescription('Chọn nơi gửi cảnh cáo.').setRequired(true).addChoices({ name: 'Gửi trong Server (Công khai)', value: 'server' }, { name: 'Gửi qua Tin nhắn riêng (DM)', value: 'dm' })).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
     new SlashCommandBuilder().setName('resettickets').setDescription('Reset số đếm của ticket về lại 1.').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('warnings').setDescription('Kiểm tra số lần cảnh cáo của một thành viên.').addUserOption(opt => opt.setName('người').setDescription('Thành viên cần kiểm tra.').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
@@ -241,6 +258,7 @@ const commands = [
                 { name: 'Xanh Lá (Success)', value: 'Success' },
                 { name: 'Đỏ (Danger)', value: 'Danger' }
             ))
+            .addStringOption(opt => opt.setName('emoji_nút').setDescription('Emoji hiển thị trên nút bấm (Tùy chọn).'))
         ),
     // --- LỆNH HELP ---
     new SlashCommandBuilder().setName('help').setDescription('Hiển thị danh sách các lệnh hoặc thông tin chi tiết về một lệnh cụ thể.').addStringOption(opt => opt.setName('lệnh').setDescription('Tên lệnh bạn muốn xem chi tiết.').setRequired(false)),
@@ -1497,10 +1515,38 @@ client.on('interactionCreate', async interaction => {
             const mauSac = interaction.options.getString('mau_sac');
             const kenhNhanForm = interaction.options.getChannel('kenh_nhan_form');
             const feedbackChannelId = kenhNhanForm ? kenhNhanForm.id : DEFAULT_FEEDBACK_CHANNEL_ID;
+            
+            const buttonColor = interaction.options.getString('màu_nút') || 'Primary';
+            const buttonEmoji = interaction.options.getString('emoji_nút');
+
+            let buttonStyle;
+            switch(buttonColor) {
+                case 'Success': buttonStyle = ButtonStyle.Success; break;
+                case 'Danger': buttonStyle = ButtonStyle.Danger; break;
+                case 'Secondary': buttonStyle = ButtonStyle.Secondary; break;
+                default: buttonStyle = ButtonStyle.Primary;
+            }
+
             const formEmbed = new EmbedBuilder().setTitle(tieuDe).setDescription(moTa);
             if (mauSac) formEmbed.setColor(mauSac);
             if (hinhAnh) formEmbed.setImage(hinhAnh);
-            const openFormButton = new ButtonBuilder().setCustomId(`open_feedback_form_${feedbackChannelId}`).setLabel('Pấm Nút').setStyle(ButtonStyle.Primary).setEmoji('<:email49:1412322374891602020>');
+
+            const openFormButton = new ButtonBuilder()
+                .setCustomId(`open_feedback_form_${feedbackChannelId}`)
+                .setLabel('Bấm Nút')
+                .setStyle(buttonStyle);
+            
+            if (buttonEmoji) {
+                try {
+                    openFormButton.setEmoji(buttonEmoji);
+                } catch (e) {
+                    console.log(`Emoji không hợp lệ cho formsetup: ${buttonEmoji}. Sử dụng emoji mặc định.`);
+                    openFormButton.setEmoji('<:email49:1412322374891602020>');
+                }
+            } else {
+                openFormButton.setEmoji('<:email49:1412322374891602020>');
+            }
+
             const row = new ActionRowBuilder().addComponents(openFormButton);
             const messagePayload = { embeds: [formEmbed], components: [row] };
             if (content) messagePayload.content = content;
@@ -1677,6 +1723,7 @@ client.on('interactionCreate', async interaction => {
                 const buttonLabel = interaction.options.getString('chữ_nút') || 'Đăng ký';
                 const color = interaction.options.getString('màu') || '#5865F2';
                 const buttonColor = interaction.options.getString('màu_nút') || 'Primary';
+                const buttonEmoji = interaction.options.getString('emoji_nút');
 
                 let buttonStyle;
                 switch(buttonColor) {
@@ -1694,9 +1741,20 @@ client.on('interactionCreate', async interaction => {
                 const applyButton = new ButtonBuilder()
                     .setCustomId(`apply_start_${form.form_id}`)
                     .setLabel(buttonLabel)
-                    .setStyle(buttonStyle)
-                    .setEmoji('📝');
-                    
+                    .setStyle(buttonStyle);
+                
+                const defaultEmoji = '📝';
+                if (buttonEmoji) {
+                    try {
+                        applyButton.setEmoji(buttonEmoji);
+                    } catch (e) {
+                        console.log(`Emoji không hợp lệ cho applysetup panel: ${buttonEmoji}. Sử dụng emoji mặc định.`);
+                        applyButton.setEmoji(defaultEmoji);
+                    }
+                } else {
+                    applyButton.setEmoji(defaultEmoji);
+                }
+
                 const row = new ActionRowBuilder().addComponents(applyButton);
                 
                 await interaction.channel.send({ embeds: [panelEmbed], components: [row] });
