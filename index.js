@@ -20,8 +20,8 @@ const Database = require('better-sqlite3');
 const fs = require('fs'); // Thêm module fs
 
 // --- KHỞI TẠO DATABASE ---
-fs.mkdirSync('./data', { recursive: true }); // Tạo thư mục data nếu chưa có
-const db = new Database('./data/data.db');
+fs.mkdirSync('/data', { recursive: true }); // Tạo thư mục data nếu chưa có
+const db = new Database('/data/data.db');
 
 // --- BIẾN TOÀN CỤC ---
 const queue = new Map(); // Quản lý hàng đợi nhạc cho mỗi server
