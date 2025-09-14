@@ -19,7 +19,7 @@ const play = require('play-dl');
 const Database = require('better-sqlite3');
 
 // --- KHỞI TẠO DATABASE ---
-const db = new Database('/data/data.db');
+const db = new Database('./data/data.db');
 
 // --- BIẾN TOÀN CỤC ---
 const queue = new Map(); // Quản lý hàng đợi nhạc cho mỗi server
@@ -715,7 +715,7 @@ client.on('interactionCreate', async interaction => {
             
             modal.addComponents(
                 new ActionRowBuilder().addComponents(prizeInput),
-                new ActionRowRowBuilder().addComponents(durationInput),
+                new ActionRowBuilder().addComponents(durationInput),
                 new ActionRowBuilder().addComponents(winnerCountInput),
                 new ActionRowBuilder().addComponents(contentInput),
                 new ActionRowBuilder().addComponents(advancedInput)
@@ -725,6 +725,18 @@ client.on('interactionCreate', async interaction => {
         }
         // --- XỬ LÝ NÚT APPLICATION NÂNG CẤP ---
         else if (customId.startsWith('apply_')) {
+            // Custom error class để chứa interaction khi hủy
+            class CancelError extends Error {
+                constructor(interaction, ...params) {
+                    super(...params);
+                    if (Error.captureStackTrace) {
+                        Error.captureStackTrace(this, CancelError);
+                    }
+                    this.name = 'CancelError';
+                    this.interaction = interaction;
+                }
+            }
+
             const parts = customId.split('_');
             const action = parts[1];
             const formIdOrSubmissionId = parts[2];
@@ -755,9 +767,8 @@ client.on('interactionCreate', async interaction => {
                     let answer = null;
                     
                     try {
-                        let response;
                         const messageFilter = m => m.author.id === interaction.user.id;
-                        const buttonFilter = i => i.user.id === interaction.user.id && i.customId === 'apply_cancel';
+                        const buttonFilter = i => i.user.id === interaction.user.id;
 
                         switch (question.question_style) {
                             case 'YesNo': {
@@ -766,8 +777,8 @@ client.on('interactionCreate', async interaction => {
                                 const row = new ActionRowBuilder().addComponents(yesButton, noButton, cancelButton);
                                 const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
                                 
-                                const buttonInteraction = await msg.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id });
-                                if (buttonInteraction.customId === 'apply_cancel') throw new Error('cancelled');
+                                const buttonInteraction = await msg.awaitMessageComponent({ filter: buttonFilter });
+                                if (buttonInteraction.customId === 'apply_cancel') throw new CancelError(buttonInteraction);
 
                                 answer = buttonInteraction.customId === 'yes' ? 'Có' : 'Không';
                                 await buttonInteraction.update({ content: `*Bạn đã chọn: ${answer}*`, components: [] });
@@ -784,8 +795,8 @@ client.on('interactionCreate', async interaction => {
                                 const buttonRow = new ActionRowBuilder().addComponents(cancelButton);
                                 const msg = await dmChannel.send({ content: questionPrompt, components: [menuRow, buttonRow] });
 
-                                const componentInteraction = await msg.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id });
-                                if (componentInteraction.isButton() && componentInteraction.customId === 'apply_cancel') throw new Error('cancelled');
+                                const componentInteraction = await msg.awaitMessageComponent({ filter: buttonFilter });
+                                if (componentInteraction.isButton() && componentInteraction.customId === 'apply_cancel') throw new CancelError(componentInteraction);
                                 
                                 answer = componentInteraction.values[0];
                                 await componentInteraction.update({ content: `*Bạn đã chọn: ${answer}*`, components: [] });
@@ -798,14 +809,14 @@ client.on('interactionCreate', async interaction => {
                                     const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
 
                                     const messageCollector = dmChannel.awaitMessages({ filter: messageFilter, max: 1 });
-                                    const buttonCollector = msg.awaitMessageComponent({ filter: buttonFilter });
+                                    const buttonCollector = msg.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id && i.customId === 'apply_cancel'});
                                     
-                                    response = await Promise.race([messageCollector, buttonCollector]);
-
-                                    if (response.customId === 'apply_cancel') throw new Error('cancelled');
+                                    const response = await Promise.race([messageCollector, buttonCollector]);
+                                    
+                                    if (response.customId === 'apply_cancel') throw new CancelError(response);
                                     
                                     const collectedMsg = response.first();
-                                    if (!isNaN(parseInt(collectedMsg.content))) {
+                                    if (collectedMsg && !isNaN(parseInt(collectedMsg.content))) {
                                         answer = collectedMsg.content;
                                         isValidNumber = true;
                                     } else {
@@ -819,27 +830,29 @@ client.on('interactionCreate', async interaction => {
                                 const msg = await dmChannel.send({ content: questionPrompt, components: [row] });
                                 
                                 const messageCollector = dmChannel.awaitMessages({ filter: messageFilter, max: 1 });
-                                const buttonCollector = msg.awaitMessageComponent({ filter: buttonFilter });
+                                const buttonCollector = msg.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id && i.customId === 'apply_cancel'});
 
-                                response = await Promise.race([messageCollector, buttonCollector]);
+                                const response = await Promise.race([messageCollector, buttonCollector]);
                                 
-                                if (response.customId === 'apply_cancel') throw new Error('cancelled');
-
-                                answer = response.first().content;
+                                if (response instanceof Collection) { // Message received
+                                     answer = response.first().content;
+                                } else { // Button clicked (must be cancel)
+                                     throw new CancelError(response);
+                                }
                                 break;
                             }
                         }
                     } catch (e) {
-                         if (e.message === 'cancelled') {
-                            await e.interaction?.update({ content: '✅ Đơn đăng ký đã được bạn hủy.', components: [] }).catch(() => {});
-                            await dmChannel.send('✅ Đơn đăng ký đã được hủy.');
+                         if (e instanceof CancelError) {
+                            await e.interaction.update({ content: `*Câu hỏi đã được hủy.*`, components: [] }).catch(() => {});
+                            await dmChannel.send('✅ Đơn đăng ký đã được bạn hủy.');
                             return;
                          }
                          console.error("Lỗi trong vòng lặp câu hỏi:", e);
-                         await dmChannel.send('Đã có lỗi xảy ra. Đơn đăng ký đã bị hủy.');
+                         await dmChannel.send('Đã có lỗi không mong muốn xảy ra. Đơn đăng ký đã bị hủy.');
                          return;
                     }
-                     collectedAnswers.push({ question_id: question.question_id, answer_text: answer });
+                    collectedAnswers.push({ question_id: question.question_id, answer_text: answer });
                 }
                 
                 await dmChannel.send('Cảm ơn bạn đã hoàn thành! Đơn của bạn đang được xử lý và gửi đi...');
