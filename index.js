@@ -17,8 +17,10 @@ require('dotenv').config();
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
 const play = require('play-dl');
 const Database = require('better-sqlite3');
+const fs = require('fs');
 
 // --- KHỞI TẠO DATABASE ---
+fs.mkdirSync('./data', { recursive: true });
 const db = new Database('./data/data.db');
 
 // --- BIẾN TOÀN CỤC ---
