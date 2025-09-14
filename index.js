@@ -92,7 +92,7 @@ function setupDatabase() {
         question_style TEXT NOT NULL DEFAULT 'Short',
         placeholder TEXT,
         is_required INTEGER NOT NULL DEFAULT 1,
-        question_options TEXT, -- THÊM CỘT MỚI
+        question_options TEXT,
         FOREIGN KEY (form_id) REFERENCES app_forms (form_id) ON DELETE CASCADE
     )`);
 
@@ -1536,15 +1536,16 @@ client.on('interactionCreate', async interaction => {
                 .setLabel('Bấm Nút')
                 .setStyle(buttonStyle);
             
+            const defaultEmoji = '<:email49:1412322374891602020>';
             if (buttonEmoji) {
                 try {
                     openFormButton.setEmoji(buttonEmoji);
                 } catch (e) {
                     console.log(`Emoji không hợp lệ cho formsetup: ${buttonEmoji}. Sử dụng emoji mặc định.`);
-                    openFormButton.setEmoji('<:email49:1412322374891602020>');
+                    openFormButton.setEmoji(defaultEmoji);
                 }
             } else {
-                openFormButton.setEmoji('<:email49:1412322374891602020>');
+                openFormButton.setEmoji(defaultEmoji);
             }
 
             const row = new ActionRowBuilder().addComponents(openFormButton);
