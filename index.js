@@ -20,8 +20,8 @@ const Database = require('better-sqlite3');
 const fs = require('fs'); // Thêm module fs
 
 // --- KHỞI TẠO DATABASE ---
-fs.mkdirSync('/data', { recursive: true }); // Tạo thư mục data nếu chưa có
-const db = new Database('/data/data.db');
+fs.mkdirSync('./data', { recursive: true }); // Tạo thư mục data nếu chưa có
+const db = new Database('./data/data.db');
 
 // --- BIẾN TOÀN CỤC ---
 const queue = new Map(); // Quản lý hàng đợi nhạc cho mỗi server
@@ -42,6 +42,39 @@ const ADMIN_TICKET_CATEGORY_ID = '1413009227156291634';
 const STAFF_ROLE_ID = '1408719686509662340';
 const GENERAL_CHAT_CHANNEL_ID = '1413876927936331878';
 const RECEPTIONIST_ROLE_ID = '1413902389647249510';
+
+// ================================================================= //
+// --- CẤU HÌNH EVENT TRUNG THU (PHIÊN BẢN SĂN BÁNH) ---
+// ================================================================= //
+const EVENT_SANBANH_ENABLED = true; // Bật/tắt toàn bộ event
+const SANBANH_CHANNEL_ID = 'YOUR_HUNTING_CHANNEL_ID'; // << THAY ID KÊNH ĐỂ /sanbanh VÀO ĐÂY
+const SANBANH_COOLDOWN_MINUTES = 10; // Thời gian chờ giữa các lần săn (phút)
+
+// --- Nguyên liệu và Tỉ lệ ---
+const RARE_INGREDIENTS = ['Đậu xanh', 'Khoai môn', 'Trứng muối'];
+const BASE_FLOUR_DROP_CHANCE = 0.9; // 90% tỉ lệ cơ bản rơi ra bột mì
+const MIN_FLOUR_PER_HUNT = 2;
+const MAX_FLOUR_PER_HUNT = 3;
+
+// --- Công thức chế tạo ---
+const CAKE_RECIPES = {
+    'banh_dau_xanh': {
+        name: '🥮 Bánh Đậu Xanh',
+        recipe: { 'Bột mì': 10, 'Đậu xanh': 5 }
+    },
+    'banh_thap_cam': {
+        name: '🥮 Bánh Thập Cẩm',
+        recipe: { 'Bột mì': 10, 'Đậu xanh': 3, 'Khoai môn': 3, 'Trứng muối': 2 }
+    },
+    'banh_trung_muoi': {
+        name: '🥮 Bánh Trứng Muối',
+        recipe: { 'Bột mì': 10, 'Trứng muối': 2 }
+    },
+    'banh_khoai_mon': {
+        name: '🥮 Bánh Khoai Môn',
+        recipe: { 'Bột mì': 10, 'Khoai môn': 2 }
+    }
+};
 
 // --- THIẾT LẬP DATABASE ---
 function setupDatabase() {
@@ -125,6 +158,31 @@ function setupDatabase() {
             console.error('Lỗi khi nâng cấp bảng app_questions:', error);
         }
     }
+
+    // --- Bảng cho Event Săn Bánh Trung Thu ---
+    db.exec(`CREATE TABLE IF NOT EXISTS event_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        itemName TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(userId, guildId, itemName)
+    )`);
+    
+    db.exec(`CREATE TABLE IF NOT EXISTS event_cooldowns (
+        userId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        command TEXT NOT NULL,
+        expiresAt INTEGER NOT NULL,
+        PRIMARY KEY (userId, guildId, command)
+    )`);
+
+    db.exec(`CREATE TABLE IF NOT EXISTS event_user_stats (
+        userId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        rareDropCooldown INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (userId, guildId)
+    )`);
 
     db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`).run('ticketCounter', '1');
     console.log('✅ Database đã được thiết lập và sẵn sàng (với hệ thống Giveaway và Application nâng cấp).');
@@ -261,6 +319,28 @@ const commands = [
             ))
             .addStringOption(opt => opt.setName('emoji_nút').setDescription('Emoji hiển thị trên nút bấm (Tùy chọn).'))
         ),
+    
+    // --- LỆNH EVENT SĂN BÁNH ---
+    new SlashCommandBuilder().setName('sanbanh')
+        .setDescription('Đi săn nguyên liệu để làm bánh Trung Thu.'),
+    
+    new SlashCommandBuilder().setName('tuido')
+        .setDescription('Kiểm tra túi đồ chứa nguyên liệu làm bánh của bạn.'),
+        
+    new SlashCommandBuilder().setName('craft')
+        .setDescription('Chế tạo bánh Trung Thu từ những nguyên liệu đã thu thập.')
+        .addStringOption(opt =>
+            opt.setName('loai_banh')
+                .setDescription('Chọn loại bánh bạn muốn chế tạo.')
+                .setRequired(true)
+                .addChoices(
+                    { name: '🥮 Bánh Đậu Xanh', value: 'banh_dau_xanh' },
+                    { name: '🥮 Bánh Thập Cẩm', value: 'banh_thap_cam' },
+                    { name: '🥮 Bánh Trứng Muối', value: 'banh_trung_muoi' },
+                    { name: '🥮 Bánh Khoai Môn', value: 'banh_khoai_mon' }
+                )
+        ),
+
     // --- LỆNH HELP ---
     new SlashCommandBuilder().setName('help').setDescription('Hiển thị danh sách các lệnh hoặc thông tin chi tiết về một lệnh cụ thể.').addStringOption(opt => opt.setName('lệnh').setDescription('Tên lệnh bạn muốn xem chi tiết.').setRequired(false)),
 
@@ -1767,7 +1847,227 @@ client.on('interactionCreate', async interaction => {
             // Tạm thời để trống, chúng ta sẽ xử lý qua nút bấm
             return interaction.reply({ content: 'Tính năng này hiện được sử dụng qua các nút bấm trên panel đăng ký.', ephemeral: true });
         }
+        else if (commandName === 'help') {
+             await interaction.deferReply();
+             const commandOption = interaction.options.getString('lệnh');
+             const categories = {
+                 'fun_info': { label: '✨ Thông tin & Vui vẻ', commands: ['noitu', 'info', 'ping', 'hi1', 'hi2', 'time', 'feedback', 'avatar', 'poll'] },
+                 'mod_utility': { label: '🛠️ Quản lý & Tiện ích', commands: ['announce', 'clear', 'kick', 'ban', 'unban', 'timeout', 'untimeout', 'rename', 'move', 'warn', 'warnings', 'resetwarnings'] },
+                 'roles': { label: '👑 Quản lý Vai trò', commands: ['roletemp', 'unroletemp'] },
+                 'support': { label: '🎫 Ticket & Form', commands: ['ticketsetup', 'formsetup', 'resettickets', 'applysetup'] },
+                 'giveaway': { label: '🎉 Giveaway', commands: ['giveaway'] },
+                 'music': { label: '🎶 Nghe nhạc', commands: ['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying', 'loop'] }
+             };
+             if (commandOption) {
+                 const cmd = commands.find(c => c.name === commandOption.toLowerCase());
+                 if (!cmd) {
+                     return interaction.followUp({ content: `Không tìm thấy lệnh nào có tên \`${commandOption}\`.`, ephemeral: true });
+                 }
+                 const helpEmbed = new EmbedBuilder().setColor('Blue').setTitle(`📜 Chi tiết lệnh: \`/${cmd.name}\``).setDescription(cmd.description || 'Không có mô tả.').setTimestamp();
+                 if (cmd.options && cmd.options.length > 0) {
+                     const optionsList = cmd.options.map(opt => {
+                         let optionDesc = `**\`${opt.name}\`**: ${opt.description}`;
+                         if (opt.required) optionDesc += ' (Bắt buộc)';
+                         return optionDesc;
+                     }).join('\n');
+                     helpEmbed.addFields({ name: 'Các tùy chọn', value: optionsList });
+                 }
+                 await interaction.followUp({ embeds: [helpEmbed] });
+             } else {
+                 const helpEmbed = new EmbedBuilder().setColor('Fuchsia').setTitle('📖 Bảng Hướng Dẫn Lệnh').setDescription('Đây là danh sách tất cả các lệnh của bot. Dùng menu bên dưới để lọc theo danh mục, hoặc dùng `/help [tên lệnh]` để xem chi tiết một lệnh.').setTimestamp().setThumbnail(client.user.displayAvatarURL());
+                 const categoryMenu = new StringSelectMenuBuilder().setCustomId('help_category_select').setPlaceholder('Chọn một danh mục lệnh...').addOptions(Object.entries(categories).map(([key, value]) => ({ label: value.label, value: key })));
+                 const row = new ActionRowBuilder().addComponents(categoryMenu);
+                 await interaction.followUp({ embeds: [helpEmbed], components: [row] });
+             }
+         }
+        
+        // ================================================================= //
+        // --- XỬ LÝ LỆNH EVENT SĂN BÁNH ---
+        // ================================================================= //
+
+        // Hàm hỗ trợ để cập nhật túi đồ
+        const updateInventory = (userId, guildId, itemName, amount) => {
+            const transaction = db.transaction(() => {
+                const item = db.prepare('SELECT quantity FROM event_inventory WHERE userId = ? AND guildId = ? AND itemName = ?').get(userId, guildId, itemName);
+                if (item) {
+                    db.prepare('UPDATE event_inventory SET quantity = quantity + ? WHERE userId = ? AND guildId = ? AND itemName = ?').run(amount, userId, guildId, itemName);
+                } else {
+                    db.prepare('INSERT INTO event_inventory (userId, guildId, itemName, quantity) VALUES (?, ?, ?, ?)').run(userId, guildId, itemName, amount);
+                }
+            });
+            transaction();
+        };
+
+        if (commandName === 'sanbanh') {
+            if (!EVENT_SANBANH_ENABLED) return interaction.reply({ content: 'Sự kiện săn bánh hiện đang tạm tắt.', ephemeral: true });
+            if (interaction.channel.id !== SANBANH_CHANNEL_ID) {
+                return interaction.reply({ content: `Bạn chỉ có thể đi săn tại kênh <#${SANBANH_CHANNEL_ID}>!`, ephemeral: true });
+            }
+
+            await interaction.deferReply();
+            
+            const userId = interaction.user.id;
+            const guildId = interaction.guild.id;
+
+            // --- Kiểm tra Cooldown ---
+            const now = Date.now();
+            const cooldown = db.prepare('SELECT expiresAt FROM event_cooldowns WHERE userId = ? AND guildId = ? AND command = ?').get(userId, guildId, 'sanbanh');
+            if (cooldown && now < cooldown.expiresAt) {
+                const timeLeft = Math.ceil((cooldown.expiresAt - now) / 1000);
+                const minutesLeft = Math.floor(timeLeft / 60);
+                const secondsLeft = timeLeft % 60;
+                return interaction.editReply({ content: `⌛ Bạn đang trong thời gian hồi chiêu. Vui lòng quay lại sau **${minutesLeft} phút ${secondsLeft} giây** nữa.`, ephemeral: true });
+            }
+
+            // --- Lấy thông tin người chơi ---
+            let userStats = db.prepare('SELECT * FROM event_user_stats WHERE userId = ? AND guildId = ?').get(userId, guildId);
+            if (!userStats) {
+                db.prepare('INSERT INTO event_user_stats (userId, guildId) VALUES (?, ?)').run(userId, guildId);
+                userStats = { userId, guildId, rareDropCooldown: 0 };
+            }
+
+            let drops = [];
+            let embedDescription = "Bạn đã đi săn trong khu rừng và tìm thấy:\n\n";
+
+            // --- Logic rơi Bột mì ---
+            const currentFlour = db.prepare('SELECT quantity FROM event_inventory WHERE userId = ? AND guildId = ? AND itemName = ?').get(userId, guildId, 'Bột mì')?.quantity || 0;
+            const flourDropChance = Math.max(0.1, BASE_FLOUR_DROP_CHANCE - (currentFlour * 0.005)); // Tỉ lệ giảm dần nhưng không dưới 10%
+            
+            if (Math.random() < flourDropChance) {
+                const flourAmount = Math.floor(Math.random() * (MAX_FLOUR_PER_HUNT - MIN_FLOUR_PER_HUNT + 1)) + MIN_FLOUR_PER_HUNT;
+                updateInventory(userId, guildId, 'Bột mì', flourAmount);
+                drops.push(`🌾 **${flourAmount}** Bột mì`);
+            }
+            
+            // --- Logic rơi Nguyên liệu hiếm ---
+            if (userStats.rareDropCooldown > 0) {
+                db.prepare('UPDATE event_user_stats SET rareDropCooldown = rareDropCooldown - 1 WHERE userId = ? AND guildId = ?').run(userId, guildId);
+            } else {
+                // Tỉ lệ rơi nguyên liệu hiếm là 35%
+                if (Math.random() < 0.35) {
+                    const droppedIngredient = RARE_INGREDIENTS[Math.floor(Math.random() * RARE_INGREDIENTS.length)];
+                    updateInventory(userId, guildId, droppedIngredient, 1);
+                    drops.push(`💎 **1** ${droppedIngredient}`);
+                    
+                    const newRareCooldown = Math.floor(Math.random() * (5 - 2 + 1)) + 2; // Random từ 2 đến 5
+                    db.prepare('UPDATE event_user_stats SET rareDropCooldown = ? WHERE userId = ? AND guildId = ?').run(newRareCooldown, userId, guildId);
+                }
+            }
+
+            // --- Tạo Embed kết quả ---
+            if (drops.length === 0) {
+                embedDescription = "Lần này bạn không tìm thấy gì cả. Chúc may mắn lần sau!";
+            } else {
+                embedDescription += drops.join('\n');
+            }
+
+            const resultEmbed = new EmbedBuilder()
+                .setColor('Green')
+                .setTitle('🏕️ Kết Quả Chuyến Đi Săn')
+                .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
+                .setDescription(embedDescription)
+                .setTimestamp();
+            
+            await interaction.editReply({ embeds: [resultEmbed] });
+
+            // --- Thiết lập Cooldown mới ---
+            const newExpiresAt = now + SANBANH_COOLDOWN_MINUTES * 60 * 1000;
+            db.prepare('INSERT OR REPLACE INTO event_cooldowns (userId, guildId, command, expiresAt) VALUES (?, ?, ?, ?)').run(userId, guildId, 'sanbanh', newExpiresAt);
+
+            await interaction.followUp({ content: `Bạn cần nghỉ ngơi **${SANBANH_COOLDOWN_MINUTES} phút** trước khi có thể đi săn lần nữa.`, ephemeral: true });
+
+        }
+        else if (commandName === 'tuido') {
+            await interaction.deferReply({ ephemeral: true });
+            
+            const allItems = ['Bột mì', ...RARE_INGREDIENTS, ...Object.values(CAKE_RECIPES).map(r => r.name)];
+            const userItems = db.prepare('SELECT itemName, quantity FROM event_inventory WHERE userId = ? AND guildId = ? AND quantity > 0').all(interaction.user.id, interaction.guild.id);
+            const inventoryMap = new Map(userItems.map(i => [i.itemName, i.quantity]));
+
+            const inventoryEmbed = new EmbedBuilder()
+                .setColor('Gold')
+                .setTitle(`🎒 Túi Đồ của ${interaction.user.username}`)
+                .setThumbnail('https://i.imgur.com/K64xBC1.png');
+
+            let nguyenLieuDesc = "";
+            let banhDesc = "";
+
+            // Hiển thị nguyên liệu
+            const allIngredients = ['Bột mì', ...RARE_INGREDIENTS];
+            for(const item of allIngredients) {
+                const quantity = inventoryMap.get(item) || 0;
+                nguyenLieuDesc += `**${item}**: \`${quantity}\`\n`;
+            }
+
+            // Hiển thị bánh
+            for(const cakeKey in CAKE_RECIPES) {
+                const cakeName = CAKE_RECIPES[cakeKey].name;
+                const quantity = inventoryMap.get(cakeName) || 0;
+                if(quantity > 0) {
+                     banhDesc += `**${cakeName}**: \`${quantity}\` cái\n`;
+                }
+            }
+            
+            inventoryEmbed.addFields({ name: 'Nguyên Liệu', value: nguyenLieuDesc || 'Chưa có nguyên liệu.' });
+            if (banhDesc) {
+                inventoryEmbed.addFields({ name: 'Thành Phẩm', value: banhDesc });
+            }
+
+            await interaction.editReply({ embeds: [inventoryEmbed] });
+        }
+        else if (commandName === 'craft') {
+            await interaction.deferReply();
+            
+            const cakeType = interaction.options.getString('loai_banh');
+            const selectedCake = CAKE_RECIPES[cakeType];
+            
+            const userItems = db.prepare('SELECT itemName, quantity FROM event_inventory WHERE userId = ? AND guildId = ?').all(interaction.user.id, interaction.guild.id);
+            const inventoryMap = new Map(userItems.map(i => [i.itemName, i.quantity]));
+
+            let missingItems = [];
+            for (const [ingredient, requiredAmount] of Object.entries(selectedCake.recipe)) {
+                const userAmount = inventoryMap.get(ingredient) || 0;
+                if (userAmount < requiredAmount) {
+                    missingItems.push(`- **${ingredient}**: cần ${requiredAmount}, bạn có ${userAmount}`);
+                }
+            }
+
+            if (missingItems.length > 0) {
+                const failedEmbed = new EmbedBuilder()
+                    .setColor('Red')
+                    .setTitle('🛠️ Chế Tạo Thất Bại')
+                    .setDescription(`Bạn không đủ nguyên liệu để làm **${selectedCake.name}**.\n\n**Còn thiếu:**\n${missingItems.join('\n')}`);
+                return interaction.editReply({ embeds: [failedEmbed] });
+            }
+
+            try {
+                // Dùng transaction để đảm bảo an toàn
+                const transaction = db.transaction(() => {
+                    // Trừ nguyên liệu
+                    for (const [ingredient, amount] of Object.entries(selectedCake.recipe)) {
+                        db.prepare('UPDATE event_inventory SET quantity = quantity - ? WHERE userId = ? AND guildId = ? AND itemName = ?').run(amount, interaction.user.id, interaction.guild.id, ingredient);
+                    }
+                    // Thêm bánh thành phẩm vào kho
+                    updateInventory(interaction.user.id, interaction.guild.id, selectedCake.name, 1);
+                });
+                transaction();
+
+                const successEmbed = new EmbedBuilder()
+                    .setColor('LawnGreen')
+                    .setTitle('✨ Chế Tạo Thành Công!')
+                    .setDescription(`Chúc mừng ${interaction.user}! Bạn đã làm ra một chiếc **${selectedCake.name}** thơm ngon!`)
+                    .setImage('https://i.imgur.com/O6t4g8s.gif')
+                    .setFooter({ text: 'Kiểm tra túi đồ của bạn bằng lệnh /tuido nhé.' });
+                
+                await interaction.editReply({ embeds: [successEmbed] });
+
+            } catch (error) {
+                console.error('Lỗi khi chế tạo:', error);
+                await interaction.editReply({ content: 'Đã có lỗi xảy ra phía máy chủ khi đang chế tạo. Vui lòng thử lại.' });
+            }
+        }
         // ------------------------------------------
+
         return;
     }
 });
