@@ -42,6 +42,7 @@ const ADMIN_TICKET_CATEGORY_ID = '1413009227156291634';
 const STAFF_ROLE_ID = '1408719686509662340';
 const GENERAL_CHAT_CHANNEL_ID = '1413876927936331878';
 const RECEPTIONIST_ROLE_ID = '1413902389647249510';
+const IGNORED_VOICE_CHANNEL_NAMES = '1414053485002883235';
 
 // ================================================================= //
 // --- CẤU HÌNH EVENT TRUNG THU (PHIÊN BẢN SĂN BÁNH) ---
@@ -2126,16 +2127,44 @@ client.on('messageCreate', async message => {
 // --- SỰ KIỆN: QUẢN LÝ KÊNH THOẠI ---
 // ================================================================= //
 client.on('voiceStateUpdate', (oldState, newState) => {
-    // Bỏ qua các bot khác, nhưng không bỏ qua chính nó
-    if (newState.member.user.bot && newState.id !== client.user.id) return;
+    // Bỏ qua các bot khác
+    if (newState.member.user.bot) return;
 
-    // --- LOGIC: THÔNG BÁO KHI VÀO/RỜI KÊNH THOẠI ---
     const member = newState.member;
     const oldChannel = oldState.channel;
     const newChannel = newState.channel;
 
-    // Kiểm tra nếu người dùng VÀO một kênh thoại (hoặc chuyển kênh)
-    if (newChannel && oldChannel?.id !== newChannel.id) {
+    // --- Xử lý các trường hợp ---
+
+    // Trường hợp 1: DI CHUYỂN (từ kênh cũ sang kênh mới)
+    if (oldChannel && newChannel && oldChannel.id !== newChannel.id) {
+        // Bỏ qua nếu kênh cũ hoặc kênh mới nằm trong danh sách bỏ qua
+        if (IGNORED_VOICE_CHANNEL_NAMES.includes(oldChannel.name) || IGNORED_VOICE_CHANNEL_NAMES.includes(newChannel.name)) {
+            return;
+        }
+
+        try {
+            const moveEmbed = new EmbedBuilder()
+                .setColor('Blue')
+                .setAuthor({ name: member.displayName, iconURL: member.user.displayAvatarURL() })
+                .setDescription(`${member} đã di chuyển kênh thoại.`)
+                .addFields(
+                    { name: '➡️ Từ kênh', value: `**${oldChannel.name}**`, inline: false },
+                    { name: '⬇️ Đến kênh', value: `**${newChannel.name}**`, inline: false }
+                )
+                .setTimestamp();
+            
+            newChannel.send({ embeds: [moveEmbed] });
+        } catch (error) {
+            console.error(`Không thể gửi tin nhắn di chuyển vào kênh ${newChannel.name}:`, error.message);
+        }
+    }
+    // Trường hợp 2: CHỈ THAM GIA (từ trạng thái không ở đâu -> vào một kênh)
+    else if (!oldChannel && newChannel) {
+        // Bỏ qua nếu kênh tham gia nằm trong danh sách bỏ qua
+        if (IGNORED_VOICE_CHANNEL_NAMES.includes(newChannel.name)) {
+            return;
+        }
         try {
             const joinEmbed = new EmbedBuilder()
                 .setColor('Green')
@@ -2149,12 +2178,15 @@ client.on('voiceStateUpdate', (oldState, newState) => {
             
             newChannel.send({ embeds: [joinEmbed] });
         } catch (error) {
-            console.error(`Không thể gửi tin nhắn vào kênh thoại ${newChannel.name}:`, error.message);
+            console.error(`Không thể gửi tin nhắn tham gia vào kênh ${newChannel.name}:`, error.message);
         }
     }
-
-    // Kiểm tra nếu người dùng RỜI một kênh thoại (hoặc chuyển kênh)
-    if (oldChannel && oldChannel.id !== newChannel?.id) {
+    // Trường hợp 3: CHỈ RỜI ĐI (từ một kênh -> không ở đâu cả)
+    else if (oldChannel && !newChannel) {
+        // Bỏ qua nếu kênh đã rời nằm trong danh sách bỏ qua
+        if (IGNORED_VOICE_CHANNEL_NAMES.includes(oldChannel.name)) {
+            return;
+        }
         try {
             const leaveEmbed = new EmbedBuilder()
                 .setColor('Red')
@@ -2168,10 +2200,9 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 
             oldChannel.send({ embeds: [leaveEmbed] });
         } catch (error) {
-             console.error(`Không thể gửi tin nhắn vào kênh thoại ${oldChannel.name}:`, error.message);
+             console.error(`Không thể gửi tin nhắn rời khỏi kênh ${oldChannel.name}:`, error.message);
         }
     }
-    // --- Phần code bot tự rời kênh khi ở một mình đã được xóa theo yêu cầu ---
 });
 
 // ================================================================= //
