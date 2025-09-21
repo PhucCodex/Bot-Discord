@@ -2129,7 +2129,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     // Bỏ qua các bot khác, nhưng không bỏ qua chính nó
     if (newState.member.user.bot && newState.id !== client.user.id) return;
 
-    // --- LOGIC MỚI: THÔNG BÁO KHI VÀO/RỜI KÊNH THOẠI ---
+    // --- LOGIC: THÔNG BÁO KHI VÀO/RỜI KÊNH THOẠI ---
     const member = newState.member;
     const oldChannel = oldState.channel;
     const newChannel = newState.channel;
@@ -2171,18 +2171,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
              console.error(`Không thể gửi tin nhắn vào kênh thoại ${oldChannel.name}:`, error.message);
         }
     }
-    // --- KẾT THÚC LOGIC MỚI ---
-
-
-    // --- LOGIC CŨ CỦA BẠN (GIỮ NGUYÊN): Bot tự rời đi khi ở một mình ---
-    if (oldState.channelId && oldState.channel.members.size === 1 && oldState.channel.members.has(client.user.id)) {
-        const serverQueue = queue.get(oldState.guild.id);
-        if (serverQueue) {
-            serverQueue.connection.destroy();
-            queue.delete(oldState.guild.id);
-            serverQueue.textChannel.send('Mọi người đã rời đi, tôi cũng đi đây. Hẹn gặp lại!');
-        }
-    }
+    // --- Phần code bot tự rời kênh khi ở một mình đã được xóa theo yêu cầu ---
 });
 
 // ================================================================= //
