@@ -2140,7 +2140,12 @@ client.on('voiceStateUpdate', (oldState, newState) => {
             const joinEmbed = new EmbedBuilder()
                 .setColor('Green')
                 .setAuthor({ name: member.displayName, iconURL: member.user.displayAvatarURL() })
-                .setDescription(`đã tham gia kênh thoại.`);
+                .setDescription(`${member} đã tham gia kênh thoại.`)
+                .addFields(
+                    { name: '👤 Username', value: member.user.tag, inline: true },
+                    { name: '🆔 ID', value: `\`${member.id}\``, inline: true }
+                )
+                .setTimestamp();
             
             newChannel.send({ embeds: [joinEmbed] });
         } catch (error) {
@@ -2154,7 +2159,12 @@ client.on('voiceStateUpdate', (oldState, newState) => {
             const leaveEmbed = new EmbedBuilder()
                 .setColor('Red')
                 .setAuthor({ name: member.displayName, iconURL: member.user.displayAvatarURL() })
-                .setDescription(`đã rời kênh thoại.`);
+                .setDescription(`${member} đã rời kênh thoại.`)
+                .addFields(
+                    { name: '👤 Username', value: member.user.tag, inline: true },
+                    { name: '🆔 ID', value: `\`${member.id}\``, inline: true }
+                )
+                .setTimestamp();
 
             oldChannel.send({ embeds: [leaveEmbed] });
         } catch (error) {
