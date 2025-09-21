@@ -2126,7 +2126,45 @@ client.on('messageCreate', async message => {
 // --- SỰ KIỆN: QUẢN LÝ KÊNH THOẠI ---
 // ================================================================= //
 client.on('voiceStateUpdate', (oldState, newState) => {
+    // Bỏ qua các bot khác, nhưng không bỏ qua chính nó
     if (newState.member.user.bot && newState.id !== client.user.id) return;
+
+    // --- LOGIC MỚI: THÔNG BÁO KHI VÀO/RỜI KÊNH THOẠI ---
+    const member = newState.member;
+    const oldChannel = oldState.channel;
+    const newChannel = newState.channel;
+
+    // Kiểm tra nếu người dùng VÀO một kênh thoại (hoặc chuyển kênh)
+    if (newChannel && oldChannel?.id !== newChannel.id) {
+        try {
+            const joinEmbed = new EmbedBuilder()
+                .setColor('Green')
+                .setAuthor({ name: member.displayName, iconURL: member.user.displayAvatarURL() })
+                .setDescription(`đã tham gia kênh thoại.`);
+            
+            newChannel.send({ embeds: [joinEmbed] });
+        } catch (error) {
+            console.error(`Không thể gửi tin nhắn vào kênh thoại ${newChannel.name}:`, error.message);
+        }
+    }
+
+    // Kiểm tra nếu người dùng RỜI một kênh thoại (hoặc chuyển kênh)
+    if (oldChannel && oldChannel.id !== newChannel?.id) {
+        try {
+            const leaveEmbed = new EmbedBuilder()
+                .setColor('Red')
+                .setAuthor({ name: member.displayName, iconURL: member.user.displayAvatarURL() })
+                .setDescription(`đã rời kênh thoại.`);
+
+            oldChannel.send({ embeds: [leaveEmbed] });
+        } catch (error) {
+             console.error(`Không thể gửi tin nhắn vào kênh thoại ${oldChannel.name}:`, error.message);
+        }
+    }
+    // --- KẾT THÚC LOGIC MỚI ---
+
+
+    // --- LOGIC CŨ CỦA BẠN (GIỮ NGUYÊN): Bot tự rời đi khi ở một mình ---
     if (oldState.channelId && oldState.channel.members.size === 1 && oldState.channel.members.has(client.user.id)) {
         const serverQueue = queue.get(oldState.guild.id);
         if (serverQueue) {
