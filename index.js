@@ -47,7 +47,7 @@ const RECEPTIONIST_ROLE_ID = '1413902389647249510';
 // --- CẤU HÌNH EVENT TRUNG THU (PHIÊN BẢN SĂN BÁNH) ---
 // ================================================================= //
 const EVENT_SANBANH_ENABLED = true; // Bật/tắt toàn bộ event
-const SANBANH_CHANNEL_ID = 'YOUR_HUNTING_CHANNEL_ID'; // << THAY ID KÊNH ĐỂ /sanbanh VÀO ĐÂY
+const SANBANH_CHANNEL_ID = '1414180326611091537'; // << THAY ID KÊNH ĐỂ /sanbanh VÀO ĐÂY
 const SANBANH_COOLDOWN_MINUTES = 10; // Thời gian chờ giữa các lần săn (phút)
 
 // --- Nguyên liệu và Tỉ lệ ---
