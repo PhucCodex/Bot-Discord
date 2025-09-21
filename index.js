@@ -47,7 +47,7 @@ const RECEPTIONIST_ROLE_ID = '1413902389647249510';
 // --- CẤU HÌNH EVENT TRUNG THU (PHIÊN BẢN SĂN BÁNH) ---
 // ================================================================= //
 const EVENT_SANBANH_ENABLED = true; // Bật/tắt toàn bộ event
-const SANBANH_CHANNEL_ID = '1414180326611091537'; // << THAY ID KÊNH ĐỂ /sanbanh VÀO ĐÂY
+const SANBANH_CHANNEL_ID = 'YOUR_HUNTING_CHANNEL_ID'; // << THAY ID KÊNH ĐỂ /sanbanh VÀO ĐÂY
 const SANBANH_COOLDOWN_MINUTES = 10; // Thời gian chờ giữa các lần săn (phút)
 
 // --- Nguyên liệu và Tỉ lệ ---
@@ -1987,7 +1987,7 @@ client.on('interactionCreate', async interaction => {
             const inventoryEmbed = new EmbedBuilder()
                 .setColor('Gold')
                 .setTitle(`🎒 Túi Đồ của ${interaction.user.username}`)
-                .setThumbnail('https://i.imgur.com/K64xBC1.png');
+                .setThumbnail('https://media.discordapp.net/attachments/1406560267214524527/1419248241995939851/trungthu12.png?ex=68d1116d&is=68cfbfed&hm=842d25299bd10efca8004e80c91d53d175f3a10dd9c55d847674105c9ed51010&=');
 
             let nguyenLieuDesc = "";
             let banhDesc = "";
@@ -2056,7 +2056,7 @@ client.on('interactionCreate', async interaction => {
                     .setColor('LawnGreen')
                     .setTitle('✨ Chế Tạo Thành Công!')
                     .setDescription(`Chúc mừng ${interaction.user}! Bạn đã làm ra một chiếc **${selectedCake.name}** thơm ngon!`)
-                    .setImage('https://i.imgur.com/O6t4g8s.gif')
+                    .setImage('https://media.discordapp.net/attachments/1406560267214524527/1419247924218429460/beautiful-mid-autumn-festival-banner_10693307.png?ex=68d11121&is=68cfbfa1&hm=7ce7c761404230bd76a1e94cb541305f0ce6c1df93aa7a355641b5d907bc1c18&=')
                     .setFooter({ text: 'Kiểm tra túi đồ của bạn bằng lệnh /tuido nhé.' });
                 
                 await interaction.editReply({ embeds: [successEmbed] });
